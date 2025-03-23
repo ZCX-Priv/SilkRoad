@@ -10,23 +10,35 @@ from http import HTTPStatus
 from socketserver import ThreadingMixIn
 from urllib import parse
 from threading import Timer, Thread
-from publicsuffix2 import PublicSuffixList
-import httpx
+import hashlib
+import base64
+import os
+import shutil
 import gc
 import atexit
-import shutil
-import os
 import signal
 import sys
 import platform
 from loguru import logger
 
-# ------------------ 配置与数据加载 ------------------
-with open('databases/config.json', 'r', encoding='utf-8') as config_file:
-    config = json.load(config_file)
+# Windows 平台下用于管理员权限检测
+if platform.system() == "Windows":
+    import ctypes
 
-with open('databases/users.json', 'r', encoding='utf-8') as users_file:
-    users_data = json.load(users_file)
+# ------------------ 配置与数据加载 ------------------
+def load_json(file_path):
+    with open(file_path, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+config = load_json('databases/config.json')
+users_data = load_json('databases/users.json')
+blacklist_domains = load_json('databases/blacklist.json')
+
+# 加载自定义页面
+with open(config['ERROR_FILE'], 'r', encoding='utf-8') as ef:
+    error_page = ef.read()
+with open(config['BLOCK_FILE'], 'r', encoding='utf-8') as bf:
+    block_page = bf.read()
 
 # 设置 http.client 最大请求头数量，修复 "get more than 100 headers" 错误
 http.client._MAXHEADERS = 1000
@@ -48,6 +60,24 @@ def clear_temp_cache():
 
 atexit.register(clear_temp_cache)
 
+def check_admin_privileges():
+    """检查是否以管理员权限运行"""
+    if platform.system() == "Windows":
+        try:
+            is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+        except Exception as e:
+            logger.error("Admin check failed: {}", e)
+            is_admin = False
+    else:
+        is_admin = os.geteuid() == 0
+    if not is_admin:
+        logger.warning("程序未以管理员权限运行，部分功能可能受限。")
+    else:
+        logger.info("管理员权限检测通过。")
+    return is_admin
+
+check_admin_privileges()
+
 def exit_confirmation():
     """退出程序时弹出确认对话框"""
     print("\n检测到退出信号。是否退出程序？(y/N): ", end='', flush=True)
@@ -64,13 +94,13 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGINT, signal_handler)
 
 # ------------------ 会话与用户管理 ------------------
-class Sessions(object):
+class Sessions:
     def __init__(self, length=64, age=604800, recycle_interval=3600):
         self.charset = string.ascii_letters + string.digits
         self.length = length
         self.age = age
         self.recycle_interval = recycle_interval
-        self.sessions = list()
+        self.sessions = []
         self.recycle_session()
 
     def generate_new_session(self):
@@ -79,22 +109,20 @@ class Sessions(object):
         return new_session
 
     def is_session_exist(self, session):
-        for _session in self.sessions:
-            if _session[0] == session:
-                _session[1] = time.time()
+        for s in self.sessions:
+            if s[0] == session:
+                s[1] = time.time()
                 return True
         return False
 
     def recycle_session(self):
         now = time.time()
-        deleting_sessions = [s for s in self.sessions if now - s[1] > self.age]
-        for s in deleting_sessions:
-            self.sessions.remove(s)
+        self.sessions = [s for s in self.sessions if now - s[1] <= self.age]
         Timer(self.recycle_interval, self.recycle_session).start()
 
 sessions = Sessions()
 
-class Users(object):
+class Users:
     def __init__(self):
         self.users = users_data
 
@@ -104,7 +132,7 @@ class Users(object):
 users = Users()
 
 # ------------------ 模板管理 ------------------
-class Template(object):
+class Template:
     def __init__(self):
         encoding = config.get("TEMPLATE_ENCODING", "utf-8")
         with open(config['INDEX_FILE'], encoding=encoding) as f:
@@ -127,11 +155,38 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
 ]
 
+# ------------------ 缓存操作 ------------------
+class Cache:
+    def __init__(self, base_dir):
+        self.base_dir = base_dir
+        os.makedirs(self.base_dir, exist_ok=True)
+
+    def get_cache_path(self, key):
+        return os.path.join(self.base_dir, hashlib.md5(key.encode('utf-8')).hexdigest())
+
+    def read(self, key):
+        path = self.get_cache_path(key)
+        if os.path.exists(path):
+            with open(path, 'rb') as f:
+                logger.info("使用缓存文件: {}", path)
+                return f.read()
+        return None
+
+    def write(self, key, content):
+        path = self.get_cache_path(key)
+        try:
+            with open(path, 'wb') as f:
+                f.write(content)
+            logger.info("已缓存文件: {}", path)
+        except Exception as e:
+            logger.error("缓存写入失败: {}", e)
+
+cache = Cache(os.path.join(os.path.dirname(__file__), "temp", "cache"))
+
 # ------------------ 代理处理 ------------------
-class Proxy(object):
+class Proxy:
     def __init__(self, handler):
         self.handler = handler
-        # 从请求路径中提取目标 URL（假定形如 /http://... 或 /https://...）
         self.url = self.handler.path[1:]
         parse_result = parse.urlparse(self.url)
         self.scheme = parse_result.scheme
@@ -139,8 +194,13 @@ class Proxy(object):
         self.site = self.scheme + '://' + self.netloc
         self.path = parse_result.path
 
+        # 黑名单检测
+        if self.netloc in blacklist_domains:
+            self.send_block_page()
+            raise Exception("目标域名在黑名单中: " + self.netloc)
+
     def proxy(self):
-        # 判断是否为 WebSocket 请求，若是则调用占位处理
+        # 判断是否为 WebSocket 请求
         if self.handler.headers.get('Upgrade', '').lower() == 'websocket':
             self.process_websocket()
             return
@@ -149,88 +209,161 @@ class Proxy(object):
         content_length = int(self.handler.headers.get('Content-Length', 0))
         data = self.handler.rfile.read(content_length) if content_length > 0 else None
 
+        # 仅对 GET 请求启用缓存
+        if self.handler.command.upper() == 'GET':
+            cached = cache.read(self.url)
+            if cached is not None:
+                self.process_response(None, cached, cached=True)
+                return
+
         try:
-            # 复制所有请求头，并随机设置 User-Agent 以伪装客户端信息
-            remove_headers = {"cf-connecting-ip", "x-forwarded-for", "x-real-ip",
-                          "true-client-ip", "x-vercel-deployment-url", "x-vercel-forwarded-for",
-                          "x-forwarded-host", "x-forwarded-port", "x-forwarded-proto",
-                          "x-vercel-id", "baggage"}
-            headers = {}
-            for k, v in self.handler.headers.items():
-                if k.lower() not in remove_headers:
-                   headers[k] = v
+            import httpx
+            headers = {k: v for k, v in self.handler.headers.items()}
             headers['User-Agent'] = random.choice(USER_AGENTS)
-            # 保持 Range 等特殊请求头不变，实现断点续传支持
             with httpx.Client(verify=False, follow_redirects=False, timeout=30.0) as client:
-                # 若目标响应为大文件或非 HTML，则采用流式传输
                 r = client.request(method=self.handler.command, url=self.url, headers=headers, content=data)
         except Exception as error:
             self.process_error(error)
         else:
-            self.process_response(r)
+            content_type = r.headers.get('Content-Type', '')
+            content_to_cache = r.content if (self.handler.command.upper() == 'GET' and 
+                                             any(ext in content_type for ext in ["text/html", "text/css", "application/javascript", "image/"])) else None
+            self.process_response(r, content_to_cache=content_to_cache)
+            if content_to_cache:
+                cache.write(self.url, r.content)
 
     def process_websocket(self):
-        # 占位处理：后续可结合 websockets 库实现双向持续连接
-        self.handler.send_error(HTTPStatus.NOT_IMPLEMENTED, "WebSocket代理尚未实现")
-        logger.warning("WebSocket请求未实现：{}", self.url)
+        # 完整实现 WebSocket 双向代理
+        client_key = self.handler.headers.get('Sec-WebSocket-Key')
+        if not client_key:
+            self.handler.send_error(HTTPStatus.BAD_REQUEST, "缺少 Sec-WebSocket-Key")
+            return
+
+        GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+        accept_val = base64.b64encode(hashlib.sha1((client_key + GUID).encode('utf-8')).digest()).decode('utf-8')
+        response = (
+            "HTTP/1.1 101 Switching Protocols\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Accept: {}\r\n\r\n"
+        ).format(accept_val)
+        self.handler.connection.send(response.encode())
+
+        # 建立远端 WebSocket 连接
+        import socket
+        target_host = self.netloc
+        target_port = 443 if self.scheme in ("wss", "https") else 80
+        try:
+            remote_sock = socket.create_connection((target_host, target_port), timeout=10)
+        except Exception as e:
+            logger.error("连接远程 WebSocket 服务器失败: {}", e)
+            return
+        if self.scheme in ("wss", "https"):
+            context = ssl.create_default_context()
+            remote_sock = context.wrap_socket(remote_sock, server_hostname=target_host)
+
+        remote_key = base64.b64encode(os.urandom(16)).decode('utf-8')
+        handshake_req = (
+            "GET {} HTTP/1.1\r\n"
+            "Host: {}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Key: {}\r\n"
+            "Sec-WebSocket-Version: 13\r\n\r\n"
+        ).format(self.path, target_host, remote_key)
+        remote_sock.send(handshake_req.encode())
+        try:
+            remote_resp = remote_sock.recv(4096)
+            logger.info("远程 WebSocket 握手响应: {}", remote_resp.decode('utf-8', errors='replace'))
+        except Exception as e:
+            logger.error("读取远程 WebSocket 握手响应失败: {}", e)
+            return
+
+        def forward(source, dest):
+            try:
+                while True:
+                    data = source.recv(4096)
+                    if not data:
+                        break
+                    dest.sendall(data)
+            except Exception as e:
+                logger.error("WebSocket 转发错误: {}", e)
+            finally:
+                for sock in (source, dest):
+                    try:
+                        sock.shutdown(socket.SHUT_RDWR)
+                        sock.close()
+                    except Exception:
+                        pass
+
+        t1 = Thread(target=forward, args=(self.handler.connection, remote_sock))
+        t2 = Thread(target=forward, args=(remote_sock, self.handler.connection))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
 
     def process_request(self):
-        # 根据客户端 Connection 头判断是否启用 keep-alive
         client_conn = self.handler.headers.get('Connection', '').lower()
         conn_value = 'keep-alive' if client_conn == 'keep-alive' else 'close'
-        # 修改部分请求头以突破检测与格式化
         self.modify_request_header('Referer', lambda x: x.replace(config['SERVER'], ''))
         self.modify_request_header('Origin', self.site)
         self.modify_request_header('Host', self.netloc)
-        # 保留或添加 Accept-Language、Cache-Control 等常见头（示例，可扩展）
         if 'Accept-Language' not in self.handler.headers:
-            self.handler.headers.add_header('Accept-Language', 'zh-CN,cn;q=0.9')
+            self.handler.headers.add_header('Accept-Language', 'en-US,en;q=0.9')
         self.modify_request_header('Accept-Encoding', 'identity')
         self.modify_request_header('Connection', conn_value)
-        # 如果存在 Range 请求头，保持不变（用于断点续传）
 
-    def process_response(self, r):
-        # 如果响应为 HTML，则进行链接修正处理
-        content_type = r.headers.get('Content-Type', '')
-        if "text/html" in content_type:
-             # 强制以 utf-8 编码处理文本内容
-            # 如果原响应声明了其他编码，可根据需要转换（此处假设转换为 utf-8 后不影响页面内容）
-            content = self.revision_link(r.content, 'utf-8')
-            content = content.decode(r.encoding or 'utf-8').encode('utf-8')
-            content_length = len(content)
-            # 强制覆盖 Content-Type 头为 utf-8
-            content_type = "text/html; charset=utf-8"
+    def process_response(self, r, content_to_cache=None, cached=False):
+        if not cached:
+            content_type = r.headers.get('Content-Type', '')
+            if "text/html" in content_type:
+                content = self.revision_link(r.content, r.encoding)
+            else:
+                content = r.content if r.content is not None else b''
         else:
-            # 对于非 HTML 大文件或流媒体，采用流式传输，不做链接修改
-            content = r.content if r.content is not None else b''
-            content_length = len(content)
-
-        # 发送响应头
-        self.handler.send_response(r.status_code)
-        # 转发 Content-Range 等头，支持断点续传
-        if "Content-Range" in r.headers:
-            self.handler.send_header("Content-Range", r.headers["Content-Range"])
-        if "location" in r.headers:
-            self.handler.send_header('Location', self.revision_location(r.headers['location']))
-        if "content-type" in r.headers:
-            self.handler.send_header('Content-Type', r.headers['content-type'])
-        if "set-cookie" in r.headers:
-            self.revision_set_cookie(r.headers['set-cookie'])
-        # 如果为 HTML，则使用修正后的内容长度，否则转发原始 Content-Length（如果有）
+            content = content_to_cache
+        content_length = len(content)
+        if not cached:
+            self.handler.send_response(r.status_code)
+            if "Content-Range" in r.headers:
+                self.handler.send_header("Content-Range", r.headers["Content-Range"])
+            if "location" in r.headers:
+                self.handler.send_header('Location', self.revision_location(r.headers['location']))
+            if "content-type" in r.headers:
+                self.handler.send_header('Content-Type', r.headers['content-type'])
+            if "set-cookie" in r.headers:
+                self.revision_set_cookie(r.headers['set-cookie'])
+        else:
+            self.handler.send_response(200)
+            self.handler.send_header('Content-Type', 'text/html; charset=utf-8')
         self.handler.send_header('Content-Length', content_length)
-        # 根据客户端请求决定连接是否保持
         client_conn = self.handler.headers.get('Connection', '').lower()
         conn_value = 'keep-alive' if client_conn == 'keep-alive' else 'close'
         self.handler.send_header('Connection', conn_value)
         self.handler.send_header('Access-Control-Allow-Origin', '*')
         self.handler.end_headers()
-        # 发送响应体
         if content:
             self.handler.wfile.write(content)
 
     def process_error(self, error):
-        self.handler.send_error(HTTPStatus.BAD_REQUEST, str(error))
+        self.handler.send_response(HTTPStatus.BAD_REQUEST)
+        self.handler.send_header('Content-Type', 'text/html; charset=utf-8')
+        error_content = error_page.replace("{error_info}", str(error))
+        encoded = error_content.encode('utf-8')
+        self.handler.send_header('Content-Length', len(encoded))
+        self.handler.end_headers()
+        self.handler.wfile.write(encoded)
         logger.error("Proxy error: {}", error)
+
+    def send_block_page(self):
+        self.handler.send_response(HTTPStatus.FORBIDDEN)
+        self.handler.send_header('Content-Type', 'text/html; charset=utf-8')
+        encoded = block_page.encode('utf-8')
+        self.handler.send_header('Content-Length', len(encoded))
+        self.handler.end_headers()
+        self.handler.wfile.write(encoded)
+        logger.warning("Blocked request to blacklisted domain: {}", self.netloc)
 
     def modify_request_header(self, header, value):
         target_header = None
@@ -244,7 +377,6 @@ class Proxy(object):
             self.handler.headers._headers.append((header, new_value))
 
     def revision_location(self, location):
-        # 自动重定向原始链接为代理链接，支持 http(s)、相对和省略协议的情况
         if location.startswith('http://') or location.startswith('https://'):
             new_location = config['SERVER'] + location
         elif location.startswith('//'):
@@ -256,32 +388,22 @@ class Proxy(object):
         return new_location
 
     def revision_link(self, body, coding):
-        # 对响应体中出现的链接进行修正，包括同页跳转、内链跳转、自动格式化与纠正错误链接
         if coding is None:
             return body
-        # 示例规则，可根据需求扩展更多解析规则
-        rules = [
-            ("'{}http://", config['SERVER']),
-            ('"{}http://', config['SERVER']),
-            ("'{}https://", config['SERVER']),
-            ('"{}https://', config['SERVER']),
-            ('"{}//', config['SERVER'] + self.scheme + ':'),
-            ("'{}//", config['SERVER'] + self.scheme + ':'),
-            ('"{}/', config['SERVER'] + self.site),
-            ("'{}/", config['SERVER'] + self.site),
+        patterns = [
+            (r'((?<=href=[\'"])(http[s]?://))', config['SERVER']),
+            (r'((?<=src=[\'"])(http[s]?://))', config['SERVER'])
         ]
-        for rule in rules:
-            pattern = rule[0].replace('{}', '')
-            replacement = rule[0].format(rule[1]).encode('utf-8')
-            body = body.replace(pattern.encode('utf-8'), replacement)
-        return body
+        content = body.decode(coding, errors='replace')
+        for pattern, replacement in patterns:
+            content = re.sub(pattern, replacement, content)
+        return content.encode(coding)
 
     def revision_set_cookie(self, cookies):
-        # 将响应中的 set-cookie 进行调整，确保域名、路径等正确
         cookie_list = []
         half_cookie = None
         for _cookie in cookies.split(', '):
-            if half_cookie is not None:
+            if half_cookie:
                 cookie_list.append(', '.join([half_cookie, _cookie]))
                 half_cookie = None
             elif 'Expires' in _cookie or 'expires' in _cookie:
@@ -325,15 +447,17 @@ class SilkRoadHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         self.pre_process_path()
         if self.is_login():
             if self.is_need_proxy():
-                Proxy(self).proxy()
+                try:
+                    Proxy(self).proxy()
+                except Exception as e:
+                    logger.error("Proxy异常: {}", e)
             else:
                 self.process_original()
         else:
             self.redirect_to_login()
 
     def is_login(self):
-        # 登录页面与 favicon 均无需验证会话
-        if self.path == self.login_path or self.path == self.favicon_path:
+        if self.path in (self.login_path, self.favicon_path):
             return True
         session = self.get_request_cookie(self.session_cookie_name)
         return sessions.is_session_exist(session)
@@ -385,32 +509,25 @@ class SilkRoadHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(encoded)
 
     def is_need_proxy(self):
-        # 当请求路径以 "http://" 或 "https://" 开头时，启用代理转发
         return self.path[1:].startswith('http://') or self.path[1:].startswith('https://')
 
     def pre_process_path(self):
-        # 支持通过 URL 参数进行跳转
         if self.path.startswith('/?url='):
             self.path = self.path.replace('/?url=', '/', 1)
-        # 如果路径以域名开头，则自动补全协议
         if self.is_start_with_domain(self.path[1:]):
             self.path = '/https://' + self.path[1:]
-        # 如果非代理请求，则尝试从 Referer 中补全路径
         if not self.is_need_proxy():
             referer = self.get_request_header('Referer')
-            if referer is not None and parse.urlparse(referer.replace(config['SERVER'], '')).netloc != '':
+            if referer and parse.urlparse(referer.replace(config['SERVER'], '')).netloc:
                 self.path = '/' + referer.replace(config['SERVER'], '') + self.path
 
     def get_request_cookie(self, cookie_name):
-        cookies = ""
         for header in self.headers._headers:
             if header[0].lower() == 'cookie':
-                cookies = header[1].split('; ')
-                break
-        for cookie in cookies:
-            parts = cookie.split('=')
-            if len(parts) == 2 and parts[0] == cookie_name:
-                return parts[1]
+                for cookie in header[1].split('; '):
+                    parts = cookie.split('=')
+                    if len(parts) == 2 and parts[0] == cookie_name:
+                        return parts[1]
         return ""
 
     def get_request_header(self, header_name):
@@ -429,10 +546,9 @@ class SilkRoadHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
 
     def is_start_with_domain(self, string):
         domain = self.domain_re.match(string)
+        from publicsuffix2 import PublicSuffixList
         psl = PublicSuffixList()
-        if domain is None or domain.group(1)[1:] not in psl.tlds:
-            return False
-        return True
+        return domain is not None and domain.group(1)[1:] in psl.tlds
 
 # ------------------ 多线程 HTTP 服务器 ------------------
 class ThreadingHttpServer(ThreadingMixIn, http.server.HTTPServer):
