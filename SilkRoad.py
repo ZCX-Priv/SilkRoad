@@ -1326,6 +1326,14 @@ class SilkRoadHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         if not config.get("LOGIN_VERIFICATION_ENABLED", True):
             # 直接检查是否是代理请求，避免解析URL
             if self.path[1:].startswith('http://') or self.path[1:].startswith('https://'):
+                # 检查是否包含重复的代理URL
+                proxy_url = self.path[1:]
+                proxy_match = re.match(r'https?://[^/]+/(https?://.+)', proxy_url)
+                if proxy_match:
+                    # 如果包含重复代理URL，则去掉外层代理
+                    self.path = '/' + proxy_match.group(1)
+                    logger.debug(f"Removed duplicate proxy prefix, new path: {self.path}")
+                
                 Proxy(self).proxy()
                 return
                 
@@ -1357,6 +1365,14 @@ class SilkRoadHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         if sessions.is_session_exist(session):
             # 直接检查是否是代理请求，避免解析URL
             if self.path[1:].startswith('http://') or self.path[1:].startswith('https://'):
+                # 检查是否包含重复的代理URL
+                proxy_url = self.path[1:]
+                proxy_match = re.match(r'https?://[^/]+/(https?://.+)', proxy_url)
+                if proxy_match:
+                    # 如果包含重复代理URL，则去掉外层代理
+                    self.path = '/' + proxy_match.group(1)
+                    logger.debug(f"Removed duplicate proxy prefix, new path: {self.path}")
+                
                 Proxy(self).proxy()
                 return
                 
@@ -1393,6 +1409,13 @@ class SilkRoadHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             logger.debug(f"Found 'url' parameter: '{target_url}'. Processing as proxy request.")
             # Modify self.path temporarily for the Proxy class to work correctly
             original_path = self.path
+            
+            # 检查target_url是否已经包含代理URL，如果有则先去掉
+            proxy_match = re.match(r'https?://[^/]+/(https?://.+)', target_url)
+            if proxy_match:
+                target_url = proxy_match.group(1)
+                logger.debug(f"Removed proxy prefix from URL, new target: {target_url}")
+            
             # Ensure the target URL starts with a scheme, add https if missing (common case)
             if not target_url.startswith(('http://', 'https://')):
                  # Basic check, might need refinement for //domain cases
