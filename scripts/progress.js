@@ -1,6 +1,6 @@
 // SilkRoad自定义脚本 - 页面加载进度条
 (function() {
-    console.log('SilkRoad自定义脚本已加载 - 页面加载进度条');
+    console.log('页面加载进度条');
     
     // 在页面开始加载时立即执行
     let startTime = Date.now();
