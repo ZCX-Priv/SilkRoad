@@ -318,6 +318,19 @@ A: 在 `scripts` 目录下创建新的 `.js` 文件，系统会自动加载并�
 
 请查看项目中的 LICENSE 文件了解许可证信息。
 
+## 相似项目
+
+- [@aploium/zmirror](https://github.com/aploium/zmirror) - Python实现的Web镜像
+- [@EtherDream/jsproxy](https://github.com/EtherDream/jsproxy) - 基于ServiceWorker的在线代理
+- [@greatfire/website-mirror-by-proxy](https://github.com/greatfire/website-mirror-by-proxy) - 网站镜像代理
+- [@restran/web-proxy](https://github.com/restran/web-proxy) - Web代理服务器
+- [@zjuyxy/google200](https://github.com/zjuyxy/google200) - Google搜索代理
+- [@cuber/ngx_http_google_filter_module](https://github.com/cuber/ngx_http_google_filter_module) - Nginx Google代理模块
+- [@arnofeng/ngx_google_deployment](https://github.com/arnofeng/ngx_google_deployment) - Nginx Google部署
+- [@imlinhanchao/ngx_proxy_wiki](https://github.com/imlinhanchao/ngx_proxy_wiki) - Nginx代理Wiki
+- [@jenssegers/php-proxy](https://github.com/jenssegers/php-proxy) - PHP实现的Web代理
+- [@vincentclee/glype](https://github.com/vincentclee/glype) - 基于PHP的Web代理脚本
+
 ## 贡献指南
 
 欢迎提交问题报告和功能建议，也欢迎通过Pull Request贡献代码。
