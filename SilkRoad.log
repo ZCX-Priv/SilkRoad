@@ -1497,3 +1497,4 @@
 2025-06-09 12:09:00.404 | WARNING  | __main__:process_response:1122 - 无法使用UTF-8解码内容，回退到ASCII编码: https://www.1234wu.net/public/home/images/repeat.gif
 2025-06-09 12:09:00.627 | WARNING  | __main__:process_response:1067 - 无法使用UTF-8解码内容，回退到ASCII编码: https://www.1234wu.net/public/home/images/images.gif?20101101
 2025-06-09 12:09:00.633 | WARNING  | __main__:process_response:1122 - 无法使用UTF-8解码内容，回退到ASCII编码: https://www.1234wu.net/public/home/images/images.gif?20101101
+2025-06-09 12:29:43.027 | ERROR    | __main__:proxy:1022 - Error on attempt 1/3: [WinError 10053] 你的主机中的软件中止了一个已建立的连接。, Context: {'url': 'https://hao123-static.cdn.bcebos.com/cms/2025-6/1749024682644/d3f3de306bd8.png', 'method': 'GET', 'headers': '{\'sec-ch-ua-platform\': \'"Windows"\', \'User-Agent\': \'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0\', \'sec-ch-ua\': \'"Micros...', 'retry_count': 0}
