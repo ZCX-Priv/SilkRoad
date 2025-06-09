@@ -1,0 +1,323 @@
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+    /* 核心变量定义 */
+    :root {
+        --body-background-color: #333333;
+        --main-text-color: #333333; /* 修改为深色文本，提高可读性 */
+        --main-text-form-color: #333333;
+        --main-background-color: rgba(255, 255, 255, 0.7); /* 修改为白色半透明背景 */
+        --main-background-hover-color: rgba(172, 172, 172, 0.6);
+        --main-background-active-color: rgba(138, 138, 138, 0.5);
+        --main-button-color: rgba(100, 149, 237, 0.7); /* 修改按钮颜色为蓝色系 */
+        --main-button-hover-color: rgba(65, 105, 225, 0.8);
+        --main-button-active-color: rgba(25, 25, 112, 0.9);
+        --main-input-color: rgba(255, 255, 255, 0.5);
+        --main-input-text-placeholder-color: rgba(102, 102, 102, 0.7);
+        --main-text-shadow: 0px 0px 8px rgba(0, 0, 0, 0.4);
+        --border-bottom-color-hover: rgba(239, 239, 239, 0.5);
+        --border-bottom-color-active: #efefef;
+        --link-color: #4682B4; /* 修改链接颜色为更深的蓝色 */
+    }
+
+    html, body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        /* 应用梦幻渐变背景 */
+        background: linear-gradient(
+            135deg,
+            #ffafcc,
+            #bde0fe,
+            #cdb4db,
+            #a2d2ff,
+            #fff1e6
+        );
+        background-size: 400% 400%;
+        animation: dreamyGradient 15s ease infinite;
+        /* --- 原有样式 --- */
+        -webkit-tap-highlight-color: transparent;
+        -webkit-user-select: none;
+        user-select: none;
+        font-family: 'MiSans', Arial, sans-serif;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        color: var(--main-text-color);
+        overflow: hidden;
+    }
+
+    /* 定义梦幻渐变动画 */
+    @keyframes dreamyGradient {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+
+    .container {
+        min-width: 360px;
+        max-width: 450px;
+        margin: 0 auto;
+        padding: 30px;
+        background-color: var(--main-background-color);
+        border-radius: 8px;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+        /* 添加备用方案，处理backdrop-filter兼容性问题 */
+        background-color: rgba(255, 255, 255, 0.7);
+        -webkit-backdrop-filter: blur(10px);
+        backdrop-filter: blur(10px);
+        text-align: center;
+        z-index: 1;
+    }
+
+    h1 {
+        color: var(--main-text-color);
+        text-shadow: var(--main-text-shadow);
+        margin-bottom: 30px;
+        font-family: '楷体', 'MiSans', cursive;
+        font-size: 2.5em;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+        text-align: left;
+        position: relative; /* 添加相对定位，确保密码图标定位正确 */
+    }
+
+    label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: bold;
+        color: var(--main-text-color);
+        opacity: 0.9;
+    }
+
+    .toggle-password {
+        position: absolute;
+        right: 15px;
+        top: 38px; /* 调整位置，确保在输入框内正确显示 */
+        transform: translateY(-50%);
+        cursor: pointer;
+        user-select: none;
+        font-size: 1.2em;
+        color: var(--main-input-text-placeholder-color);
+        opacity: 0.7;
+        transition: opacity 0.2s;
+        z-index: 2; /* 确保在输入框上层 */
+    }
+
+    .toggle-password:hover {
+        opacity: 1;
+    }
+
+    input[type="text"], input[type="password"] {
+        width: 100%;
+        padding: 12px;
+        padding-right: 40px;
+        background: var(--main-input-color);
+        border: 1px solid rgba(0, 0, 0, 0.1); /* 添加边框提高可见度 */
+        border-radius: 8px;
+        box-sizing: border-box;
+        font-size: 1rem;
+        color: var(--main-text-color);
+        transition: box-shadow 0.3s;
+    }
+
+    input[type="text"]::placeholder, input[type="password"]::placeholder {
+        color: var(--main-input-text-placeholder-color);
+        opacity: 1;
+    }
+
+    input[type="text"]:focus, input[type="password"]:focus {
+        outline: none;
+        box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        border-color: rgba(70, 130, 180, 0.5); /* 添加焦点边框颜色 */
+    }
+
+    input[type="submit"] {
+        background-color: var(--main-button-color);
+        color: white; /* 修改为白色，提高对比度 */
+        border: none;
+        padding: 12px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: bold; /* 加粗按钮文字 */
+        width: 100%;
+        transition: background-color 0.3s, transform 0.3s;
+        margin-top: 10px;
+    }
+
+    input[type="submit"]:hover {
+        background-color: var(--main-button-hover-color);
+    }
+
+    input[type="submit"]:active {
+        background-color: var(--main-button-active-color);
+        transform: scale(0.98);
+    }
+
+    .error-message {
+        color: #ff6b6b;
+        margin-top: 15px;
+        font-weight: bold;
+    }
+
+    /* 免责声明复选框和链接样式 */
+    .form-group a {
+        color: var(--link-color);
+        text-decoration: underline;
+        transition: color 0.3s;
+    }
+    .form-group a:hover {
+        color: #2c5282; /* 深蓝色 */
+    }
+    /* 调整复选框对齐 */
+    .form-group input[type="checkbox"] {
+        width: auto;
+        margin-right: 10px;
+        vertical-align: middle;
+        accent-color: var(--main-background-active-color);
+    }
+    .form-group label[for="disclaimer"] {
+        display: inline;
+        font-weight: normal;
+        vertical-align: middle;
+    }
+
+    /* 免责声明模态框样式 */
+    #disclaimer-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.7);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+        /* 添加备用方案，处理backdrop-filter兼容性问题 */
+        background-color: rgba(0, 0, 0, 0.7);
+        -webkit-backdrop-filter: blur(5px);
+        backdrop-filter: blur(5px);
+    }
+
+    #disclaimer-modal > div {
+        background-color: var(--main-background-color);
+        padding: 30px;
+        border-radius: 8px;
+        max-width: 80%;
+        max-height: 80%;
+        overflow-y: auto;
+        color: var(--main-text-color);
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+        /* 添加备用方案 */
+        background-color: rgba(255, 255, 255, 0.9);
+    }
+
+    #disclaimer-modal h2 {
+        color: var(--main-text-color);
+        text-shadow: var(--main-text-shadow);
+        margin-top: 0;
+        margin-bottom: 20px;
+        text-align: center;
+    }
+
+    #disclaimer-modal p {
+        line-height: 1.6;
+        margin-bottom: 15px;
+    }
+
+    #disclaimer-modal button {
+        background-color: var(--main-button-color);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        margin-top: 20px;
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+        min-width: 100px;
+        font-weight: bold;
+        transition: background-color 0.3s, transform 0.3s;
+    }
+
+    #disclaimer-modal button:hover {
+        background-color: var(--main-button-hover-color);
+    }
+    #disclaimer-modal button:active {
+        background-color: var(--main-button-active-color);
+        transform: scale(0.98);
+    }
+    </style>
+    <title>丝绸之路 - 登录</title>
+</head>
+<body>
+    <div class="container">
+        <h1>登录</h1>
+        <form action="" method="post">
+            <div class="form-group">
+                <label for="username">用户名</label>
+                <input type="text" id="username" placeholder="请输入用户名" name="user" required="required">
+            </div>
+            <div class="form-group">
+                <label for="password">密码</label>
+                <input type="password" id="password" placeholder="请输入密码" name="password" required="required">
+                <span class="toggle-password" onclick="togglePasswordVisibility()">👁️</span>
+            </div>
+            <div class="form-group" style="display: flex; align-items: center; text-align: left;">
+                <label for="disclaimer">
+                    <input type="checkbox" id="disclaimer" required="required">已阅读并同意<a href="#" onclick="showDisclaimer(); return false;" style="text-decoration: none;">《免责声明》</a>
+                </label>
+            </div>
+            <input type="submit" value="登录">
+        </form>
+        <div id="error-container">
+            <!-- 错误信息将通过 JS 插入这里 -->
+        </div>
+    </div>
+
+    <div id="disclaimer-modal">
+        <div>
+            <h2>免责声明</h2>
+            <p>本服务仅供学习和研究使用，用户在使用本服务时应遵守相关法律法规。</p>
+            <p>用户使用本服务访问的所有内容均由用户自行承担责任，与本服务提供方无关。</p>
+            <p>本服务不对用户通过本服务获取的任何内容的准确性、合法性或可靠性负责。</p>
+            <p>用户同意不将本服务用于任何非法目的或违反任何适用的法律法规。</p>
+            <button onclick="closeDisclaimer()">关闭</button>
+        </div>
+    </div>
+
+    <script>
+         if({login_failed}) {
+            var errorContainer = document.getElementById('error-container');
+            errorContainer.innerHTML = '<p class="error-message">登录失败，请检查用户名或密码</p>';
+        }
+
+        function showDisclaimer() {
+            document.getElementById('disclaimer-modal').style.display = 'flex';
+        }
+        
+        function closeDisclaimer() {
+            document.getElementById('disclaimer-modal').style.display = 'none';
+        }
+
+        function togglePasswordVisibility() {
+            const passwordInput = document.getElementById('password');
+            const toggleIcon = document.querySelector('.toggle-password');
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleIcon.textContent = '🔒';
+            } else {
+                passwordInput.type = 'password';
+                toggleIcon.textContent = '👁️';
+            }
+        }
+    </script>
+</body>
+</html>

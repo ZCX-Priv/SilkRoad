@@ -1,0 +1,22 @@
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 - 页面未找到 | 丝绸之路</title>
+    <link rel="stylesheet" type="text/css" href="{{path:"static/css",filename:"error.css"}}">
+</head>
+<body>
+    <div class="container">
+        <div class="error-icon"></div>
+        <h1>页面未找到</h1>
+        <p>抱歉，您寻找的页面已不在此处。</p>
+        
+        {% if requested_url %}
+        <p>您尝试访问的路径是:</p>
+        <div class="url">{{ requested_url }}</div>
+        {% endif %}
+        
+        <p>请检查您的链接是否正确，或者返回首页:</p>
+        <a href="/" class="back-button">返回首页</a>
+    </div>
+</body>
+</html>

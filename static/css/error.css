@@ -1,0 +1,147 @@
+:root {
+    --body-background-color: #333333; /* 保留，可能其他地方用到 */
+    --main-text-color: #333333; /* 改为深色文本，提高可读性 */
+    --main-text-form-color: #333333; /* 用于表单内文字 */
+    --main-background-color: rgba(255, 255, 255, 0.7); /* 更浅的背景，提高对比度 */
+    --main-background-hover-color: rgba(220, 220, 220, 0.8);
+    --main-background-active-color: rgba(200, 200, 200, 0.9);
+    --main-button-color: rgba(70, 130, 180, 0.8); /* 蓝色系按钮 */
+    --main-button-hover-color: rgba(70, 130, 180, 0.9);
+    --main-button-active-color: rgba(70, 130, 180, 1);
+    --main-input-color: rgba(255, 255, 255, 0.7);
+    --main-input-text-placeholder-color: rgba(100, 100, 100, 0.7);
+    --main-text-shadow: none; /* 移除文字阴影，提高可读性 */
+    --border-bottom-color-hover: rgba(70, 130, 180, 0.7);
+    --border-bottom-color-active: rgba(70, 130, 180, 1);
+    --link-color: #1a5fb4; /* 更深的链接颜色，提高对比度 */
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    /* 应用梦幻渐变背景 */
+    background: linear-gradient(
+        135deg,
+        #ffafcc, /* 柔和粉 */
+        #bde0fe, /* 淡蓝 */
+        #cdb4db, /* 淡紫 */
+        #a2d2ff, /* 浅天蓝 */
+        #fff1e6  /* 浅桃色 */
+    );
+    background-size: 400% 400%;
+    animation: dreamyGradient 15s ease infinite;
+    /* --- 原有样式 --- */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    font-family: 'MiSans', Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    color: var(--main-text-color); /* 使用更新后的文字颜色 */
+    overflow: hidden; /* 防止动画可能导致的滚动条 */
+}
+
+/* 定义梦幻渐变动画 */
+@keyframes dreamyGradient {
+    0% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+.container {
+    min-width: 360px; 
+    max-width: 600px; 
+    margin: 0 auto;
+    padding: 30px;
+    background-color: var(--main-background-color); /* 使用更浅的半透明背景 */
+    border-radius: 8px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+    /* 添加备用方案，解决backdrop-filter兼容性问题 */
+    background-color: rgba(255, 255, 255, 0.7); /* 不支持backdrop-filter时的备用背景 */
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px); /* 模糊效果使容器内容更清晰 */
+    text-align: center;
+    z-index: 1; /* 确保在动画背景之上 */
+    color: var(--main-text-color); /* 确保容器内文字颜色 */
+}
+
+h1 {
+    color: var(--main-text-color);
+    text-shadow: var(--main-text-shadow);
+    margin-bottom: 30px;
+    font-family: '楷体', 'MiSans', cursive; /* 保留楷体，备用 MiSans */
+    font-size: 2.5em; /* 可以调整大小 */
+}
+
+p {
+   font-size: 1rem; /* 调整段落字体大小 */
+   line-height: 1.6;
+   margin-bottom: 20px;
+   color: var(--main-text-color); /* 确保段落文字颜色 */
+}
+
+.url { 
+    font-family: monospace;
+    background-color: rgba(240, 240, 240, 0.7); /* 更浅的背景色，提高对比度 */
+    padding: 10px;
+    border-radius: 4px;
+    word-break: break-all;
+    margin: 20px 0;
+    border-left: 4px solid var(--link-color); /* 使用链接颜色作为边框 */
+    text-align: left;
+    color: var(--main-text-color); /* 确保文字颜色 */
+    opacity: 0.9;
+}
+
+.back-button { /* 调整返回按钮样式以匹配主题 */
+    display: inline-block;
+    background-color: var(--main-button-color);
+    color: white; /* 按钮文字使用白色，提高对比度 */
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px; /* 圆角 */
+    cursor: pointer;
+    font-size: 16px;
+    text-decoration: none;
+    font-weight: bold;
+    transition: background-color 0.3s, transform 0.3s;
+    margin-top: 20px; /* 与上方元素间距 */
+}
+
+.back-button:hover {
+    background-color: var(--main-button-hover-color);
+}
+
+.back-button:active {
+    background-color: var(--main-button-active-color);
+    transform: scale(0.98); /* 点击效果 */
+}
+
+.error-icon { /* 调整错误图标样式 */
+    font-size: 5em; /* 调整大小 */
+    margin-bottom: 20px;
+    display: inline-block;
+    color: var(--main-text-color); /* 使用主题文字颜色 */
+    opacity: 0.8;
+}
+
+/* 403页面的错误图标 */
+.error-icon::before {
+    content: attr(data-error-code, "403"); /* 使用data属性，默认为403 */
+    font-weight: bold;
+    font-family: 'Times New Roman', serif;
+}
+
+/* 为404页面添加特殊样式 */
+body[data-error="404"] .error-icon::before {
+    content: "404";
+}
