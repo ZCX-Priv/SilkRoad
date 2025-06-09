@@ -1216,7 +1216,7 @@ class Proxy(object):
         try:
             # 只处理HTML内容
             content_str = body.decode('utf-8', errors='ignore')
-            if "</head>" in content_str:
+            if "</body>" in content_str:
                 # 获取所有自定义脚本
                 scripts = script_manager.get_all_scripts()
                 if scripts:
@@ -1226,8 +1226,8 @@ class Proxy(object):
                         script_tags += f"<script>/* {script_name} */\n{script_content}\n</script>\n"
                     script_tags += "<!-- 自定义JS脚本结束 -->\n"
                     
-                    # 在</head>标签前插入脚本
-                    content_str = content_str.replace("</head>", f"{script_tags}</head>")
+                    # 在</body>标签前插入脚本
+                    content_str = content_str.replace("</body>", f"</body>{script_tags}")
                     body = content_str.encode('utf-8')
         except Exception as e:
             logger.error(f"插入自定义JS脚本失败: {e}")

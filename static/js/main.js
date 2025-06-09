@@ -170,10 +170,10 @@ var styleContent =
 
 var title1 = '丝绸之路';
 var title2 = 'Nav';
-var content = '版 本 号：3.0';
+var content = '版 本 号：3.1';
 
 try {
     console.log("%c" + title1 + " %c" + title2 + "\n%c" + content, styleTitle1, styleTitle2, styleContent);
 } catch (e) {
-    console.log("丝绸之路 Nav - 版本号：3.0");
+    console.log("丝绸之路 Nav - 版本号：3.1");
 }
