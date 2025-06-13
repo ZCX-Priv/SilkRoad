@@ -125,23 +125,3 @@ p {
     background-color: var(--main-button-active-color);
     transform: scale(0.98); /* 点击效果 */
 }
-
-.error-icon { /* 调整错误图标样式 */
-    font-size: 5em; /* 调整大小 */
-    margin-bottom: 20px;
-    display: inline-block;
-    color: var(--main-text-color); /* 使用主题文字颜色 */
-    opacity: 0.8;
-}
-
-/* 403页面的错误图标 */
-.error-icon::before {
-    content: attr(data-error-code, "403"); /* 使用data属性，默认为403 */
-    font-weight: bold;
-    font-family: 'Times New Roman', serif;
-}
-
-/* 为404页面添加特殊样式 */
-body[data-error="404"] .error-icon::before {
-    content: "404";
-}

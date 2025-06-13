@@ -1656,3 +1656,31 @@
 2025-06-13 13:51:21.473 | ERROR    | __main__:proxy:1083 - Error on attempt 1/3: [WinError 10053] 你的主机中的软件中止了一个已建立的连接。, Context: {'url': 'https://suggestion.baidu.com/su?wd=123&cb=jQuery36004221126041882187_1749793876406&_=1749793876410', 'method': 'GET', 'headers': '{\'sec-ch-ua-full-version-list\': \'"Microsoft Edge";v="137.0.3296.68", "Chromium";v="137.0.7151.69", "Not/A)Brand";v="24.0.0.0"\', \'sec-ch-ua-platform\': \'"Windows"\', \'ect\': \'4g\', \'sec-ch-ua\': \'"Microsoft...', 'retry_count': 0}
 2025-06-13 13:52:55.943 | ERROR    | __main__:proxy:1083 - Error on attempt 1/3: [WinError 10053] 你的主机中的软件中止了一个已建立的连接。, Context: {'url': 'https://www.baidu.com/s?wd=123', 'method': 'GET', 'headers': '{\'ect\': \'4g\', \'sec-ch-ua\': \'"Microsoft Edge";v="137", "Chromium";v="137", "Not/A)Brand";v="24"\', \'sec-ch-ua-mobile\': \'?0\', \'sec-ch-ua-full-version\': \'"137.0.3296.68"\', \'sec-ch-ua-arch\': \'"x86"\', \'sec-...', 'retry_count': 0}
 2025-06-13 13:52:55.945 | ERROR    | __main__:handle_one_request:1490 - 处理请求时出错: [SSL: BAD_LENGTH] bad length (_ssl.c:2483)
+2025-06-13 14:18:22.224 | WARNING  | __main__:__init__:1042 - 访问被黑名单阻止: https://example.com/
+2025-06-13 14:18:22.225 | ERROR    | __main__:handle_one_request:1561 - 处理请求时出错: 'Proxy' object has no attribute 'process_forbidden'
+2025-06-13 14:18:22.227 | WARNING  | __main__:__init__:1042 - 访问被黑名单阻止: https://example.com/
+2025-06-13 14:18:22.227 | ERROR    | __main__:handle_one_request:1561 - 处理请求时出错: 'Proxy' object has no attribute 'process_forbidden'
+2025-06-13 14:18:22.231 | WARNING  | __main__:__init__:1042 - 访问被黑名单阻止: https://example.com/
+2025-06-13 14:18:22.232 | ERROR    | __main__:handle_one_request:1561 - 处理请求时出错: 'Proxy' object has no attribute 'process_forbidden'
+2025-06-13 14:18:23.290 | WARNING  | __main__:__init__:1042 - 访问被黑名单阻止: https://example.com/
+2025-06-13 14:18:23.292 | ERROR    | __main__:handle_one_request:1561 - 处理请求时出错: 'Proxy' object has no attribute 'process_forbidden'
+2025-06-13 14:18:23.294 | WARNING  | __main__:__init__:1042 - 访问被黑名单阻止: https://example.com/
+2025-06-13 14:18:23.294 | ERROR    | __main__:handle_one_request:1561 - 处理请求时出错: 'Proxy' object has no attribute 'process_forbidden'
+2025-06-13 14:18:23.300 | WARNING  | __main__:__init__:1042 - 访问被黑名单阻止: https://example.com/
+2025-06-13 14:18:23.300 | ERROR    | __main__:handle_one_request:1561 - 处理请求时出错: 'Proxy' object has no attribute 'process_forbidden'
+2025-06-13 14:18:28.338 | WARNING  | __main__:__init__:1042 - 访问被黑名单阻止: https://example.com/
+2025-06-13 14:18:28.338 | ERROR    | __main__:handle_one_request:1561 - 处理请求时出错: 'Proxy' object has no attribute 'process_forbidden'
+2025-06-13 14:18:28.340 | WARNING  | __main__:__init__:1042 - 访问被黑名单阻止: https://example.com/
+2025-06-13 14:18:28.341 | ERROR    | __main__:handle_one_request:1561 - 处理请求时出错: 'Proxy' object has no attribute 'process_forbidden'
+2025-06-13 14:18:28.346 | WARNING  | __main__:__init__:1042 - 访问被黑名单阻止: https://example.com/
+2025-06-13 14:18:28.346 | ERROR    | __main__:handle_one_request:1561 - 处理请求时出错: 'Proxy' object has no attribute 'process_forbidden'
+2025-06-13 14:20:41.426 | WARNING  | __main__:__init__:1042 - 访问被黑名单阻止: https://example.com/
+2025-06-13 14:20:41.428 | WARNING  | __main__:process_forbidden:1184 - 已阻止访问黑名单网站: https://example.com/
+2025-06-13 14:21:22.968 | WARNING  | __main__:__init__:1042 - 访问被黑名单阻止: https://example.com/
+2025-06-13 14:21:22.969 | WARNING  | __main__:process_forbidden:1184 - 已阻止访问黑名单网站: https://example.com/
+2025-06-13 14:22:49.498 | WARNING  | __main__:__init__:1042 - 访问被黑名单阻止: https://example.com/
+2025-06-13 14:22:49.499 | WARNING  | __main__:process_forbidden:1186 - 已阻止访问黑名单网站: https://example.com/
+2025-06-13 14:24:18.074 | WARNING  | __main__:__init__:1043 - 访问被黑名单阻止: https://example.com/
+2025-06-13 14:24:18.075 | WARNING  | __main__:process_forbidden:1187 - 已阻止访问黑名单网站: https://example.com/
+2025-06-13 14:28:06.913 | WARNING  | __main__:__init__:1043 - 访问被黑名单阻止: https://example.com/
+2025-06-13 14:28:06.914 | WARNING  | __main__:process_forbidden:1187 - 已阻止访问黑名单网站: https://example.com/

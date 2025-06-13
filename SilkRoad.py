@@ -51,6 +51,15 @@ with open('databases/config.json', 'r', encoding='utf-8') as config_file:
 
 with open('databases/users.json', 'r', encoding='utf-8') as users_file:
     users_data = json.load(users_file)
+    
+# 加载黑名单数据
+try:
+    with open('databases/blacklist.json', 'r', encoding='utf-8') as blacklist_file:
+        blacklist_data = json.load(blacklist_file)
+    logger.info(f"已加载黑名单数据，包含 {len(blacklist_data)} 条记录")
+except Exception as e:
+    blacklist_data = {}
+    logger.warning(f"加载黑名单数据失败: {e}，将使用空黑名单")
 
 # 设置默认的持久连接参数
 config.setdefault("ENABLE_KEEP_ALIVE", True)  # 默认启用持久连接
@@ -668,8 +677,8 @@ class Template(object):
         try:
             with open(config['NOT_FOUND_FILE'], encoding=encoding) as f:
                 self.not_found_html = f.read()
-        except FileNotFoundError:
-            # 如果404页面文件不存在，创建一个简单的默认404页面
+        except Exception as e:
+            logger.error(f"加载404页面模板失败: {e}")
             self.not_found_html = """
             <!DOCTYPE html>
             <html>
@@ -691,6 +700,34 @@ class Template(object):
             </html>
             """
             logger.warning(f"404页面文件 {config['NOT_FOUND_FILE']} 不存在，使用默认模板")
+            
+        # 加载403页面模板
+        try:
+            with open(config['FORBIDDEN_FILE'], encoding=encoding) as f:
+                self.forbidden_html = f.read()
+        except Exception as e:
+            logger.error(f"加载403页面模板失败: {e}")
+            self.forbidden_html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>403 - 禁止访问</title>
+                <style>
+                    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+                    h1 { font-size: 36px; color: #333; }
+                    p { font-size: 18px; color: #666; }
+                    a { color: #0066cc; text-decoration: none; }
+                    a:hover { text-decoration: underline; }
+                </style>
+            </head>
+            <body>
+                <h1>403 - 禁止访问</h1>
+                <p>抱歉，您没有权限访问此页面。</p>
+                <p><a href="/">返回首页</a></p>
+            </body>
+            </html>
+            """
+            logger.warning(f"403页面文件 {config.get('FORBIDDEN_FILE', '未配置')} 不存在，使用默认模板")
         
         # 编译正则表达式用于解析模板标签
         self.resource_pattern = re.compile(r'\{\{path:"([^"]+)",\s*filename:"([^"]+)"\}\}')
@@ -880,11 +917,22 @@ class Template(object):
         """获取处理后的404页面HTML"""
         if context is None:
             context = {
+                'error_message': "资源未找到",
                 'timestamp': str(int(time.time())),
                 'server_name': config.get('SERVER_NAME', 'SilkRoad'),
                 'requested_url': ''
             }
         return self._process_template(self.not_found_html, context)
+        
+    def get_forbidden_html(self, context=None):
+        """获取处理后的403页面HTML"""
+        if context is None:
+            context = {
+                'timestamp': str(int(time.time())),
+                'server_name': config.get('SERVER_NAME', 'SilkRoad'),
+                'requested_url': ''
+            }
+        return self._process_template(self.forbidden_html, context)
 
     def render_template(self, template_name, context=None):
         """渲染指定的模板文件"""
@@ -989,6 +1037,13 @@ class Proxy(object):
             self.netloc = parse_result.netloc
             self.site = self.scheme + '://' + self.netloc if self.scheme and self.netloc else ''
             self.path = parse_result.path
+            
+            # 检查是否在黑名单中
+            if self.netloc and self.netloc in blacklist_data:
+                logger.warning(f"访问被黑名单阻止: {self.url}")
+                self.is_blacklisted = True
+            else:
+                self.is_blacklisted = False
         except Exception as e:
             logger.error(f"URL解析错误: {self.url}, 错误: {str(e)}")
             self.is_valid_url = False
@@ -1015,6 +1070,11 @@ class Proxy(object):
         # 检查URL是否有效
         if not hasattr(self, 'is_valid_url') or not self.is_valid_url:
             self.process_error(f"unknown url type: '{self.handler.path}'")
+            return
+            
+        # 检查是否在黑名单中
+        if hasattr(self, 'is_blacklisted') and self.is_blacklisted:
+            self.process_forbidden()
             return
 
         self.process_request()
@@ -1103,6 +1163,28 @@ class Proxy(object):
         # 占位处理：后续可结合 websockets 库实现双向持续连接
         self.handler.send_error(HTTPStatus.NOT_IMPLEMENTED, "WebSocket代理尚未实现")
         logger.warning("WebSocket请求未实现：{}", self.url)
+        
+    def process_forbidden(self):
+        """处理被黑名单阻止的访问请求"""
+        # 去掉URL开头的斜杠
+        requested_url = self.url
+        if requested_url.startswith('/'):
+            requested_url = requested_url[1:]
+            
+        context = {
+            'requested_url': requested_url,
+            'error_message': "此网站已被管理员列入黑名单",
+            'timestamp': str(int(time.time())),
+            'server_name': config.get('SERVER_NAME', 'SilkRoad')
+        }
+        body = template.get_forbidden_html(context)
+        self.handler.send_response(HTTPStatus.FORBIDDEN)
+        encoded = body.encode(config.get("TEMPLATE_ENCODING", "utf-8"))
+        self.handler.send_header('Content-Length', len(encoded))
+        self.handler.send_header('Content-Type', 'text/html; charset={}'.format(config.get("TEMPLATE_ENCODING", "utf-8")))
+        self.handler.end_headers()
+        self.handler.wfile.write(encoded)
+        logger.warning(f"已阻止访问黑名单网站: {self.url}")
 
     def process_request(self):
         # 根据客户端 Connection 头判断是否启用 keep-alive
