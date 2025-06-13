@@ -119,11 +119,52 @@ class ScriptManager:
         self.scripts_cache = {}
         self.last_load_time = 0
         self.cache_ttl = 60  # 缓存有效期（秒）
+        self.scripts_config = {}
+        self.positions = {
+            "after_head_start": "<head>",
+            "before_head_end": "</head>",
+            "after_body_start": "<body>",
+            "before_body_end": "</body>"
+        }
         
         # 确保脚本目录存在
         if not os.path.exists(self.scripts_dir):
             os.makedirs(self.scripts_dir)
             logger.info(f"创建脚本目录: {self.scripts_dir}")
+            
+        # 加载脚本配置
+        self.load_scripts_config()
+    
+    def load_scripts_config(self):
+        """加载脚本配置文件"""
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "databases", "scripts.json")
+        try:
+            if os.path.exists(config_path):
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config_data = json.load(f)
+                    self.scripts_config = config_data.get("scripts", [])
+                    # 更新位置配置（如果存在）
+                    if "positions" in config_data:
+                        self.positions.update(config_data["positions"])
+                logger.info(f"已加载脚本配置，包含 {len(self.scripts_config)} 个脚本配置")
+            else:
+                # 创建默认配置
+                default_config = {
+                    "scripts": [
+                        {"name": script_name, "position": "before_body_end", "exclude_domains": []}
+                        for script_name in os.listdir(self.scripts_dir) if script_name.endswith(".js")
+                    ],
+                    "positions": self.positions
+                }
+                os.makedirs(os.path.dirname(config_path), exist_ok=True)
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    json.dump(default_config, f, ensure_ascii=False, indent=2)
+                self.scripts_config = default_config["scripts"]
+                logger.info(f"已创建默认脚本配置，包含 {len(self.scripts_config)} 个脚本")
+        except Exception as e:
+            logger.error(f"加载脚本配置失败: {e}，将使用默认配置")
+            # 使用空配置
+            self.scripts_config = []
     
     def get_all_scripts(self):
         """获取所有JS脚本内容"""
@@ -152,6 +193,31 @@ class ScriptManager:
         self.last_load_time = current_time
         
         return scripts
+    
+    def get_scripts_for_position(self, position, domain=None):
+        """获取指定位置的脚本内容"""
+        scripts = self.get_all_scripts()
+        position_scripts = []
+        
+        for script_config in self.scripts_config:
+            script_name = script_config.get("name")
+            script_position = script_config.get("position", "before_body_end")
+            exclude_domains = script_config.get("exclude_domains", [])
+            
+            # 检查脚本是否应该在当前位置插入
+            if script_position == position and script_name in scripts:
+                # 检查域名是否被排除
+                if domain and any(domain.endswith(excluded) for excluded in exclude_domains):
+                    logger.debug(f"脚本 {script_name} 在域名 {domain} 上被排除")
+                    continue
+                    
+                position_scripts.append((script_name, scripts[script_name]))
+        
+        return position_scripts
+    
+    def get_position_tag(self, position):
+        """获取位置对应的HTML标签"""
+        return self.positions.get(position, "</body>")
 
 # 初始化脚本管理器
 script_manager = ScriptManager()
@@ -1519,15 +1585,25 @@ class Proxy(object):
         css_url_pattern = re.compile(r"""url\((['"]?)(.*?)\1\)""", re.IGNORECASE)
         content_str = css_url_pattern.sub(rewrite_css_url, content_str)
         
-        # 在</body>标签前插入自定义JS脚本
-        if "</body>" in content_str:
-            scripts = script_manager.get_all_scripts()
-            if scripts:
-                script_tags = "\n<!-- Custom JS Scripts Start -->\n"
-                for script_name, script_content in scripts.items():
-                    script_tags += f"<script>/* {script_name} */\n{script_content}\n</script>\n"
-                script_tags += "<!-- Custom JS Scripts End -->\n"
-                content_str = content_str.replace("</body>", f"{script_tags}</body>", 1)
+        # 在不同位置插入自定义JS脚本
+        # 提取域名用于排除检查
+        domain = parse.urlparse(self.url).netloc
+        
+        # 处理所有定义的位置
+        for position, tag in script_manager.positions.items():
+            if tag in content_str:
+                position_scripts = script_manager.get_scripts_for_position(position, domain)
+                if position_scripts:
+                    script_tags = f"\n<!-- Custom JS Scripts for {position} Start -->\n"
+                    for script_name, script_content in position_scripts:
+                        script_tags += f"<script>/* {script_name} */\n{script_content}\n</script>\n"
+                    script_tags += f"<!-- Custom JS Scripts for {position} End -->\n"
+                    
+                    # 根据位置决定插入方式
+                    if position.startswith("after_"):
+                        content_str = content_str.replace(tag, f"{tag}{script_tags}", 1)
+                    elif position.startswith("before_"):
+                        content_str = content_str.replace(tag, f"{script_tags}{tag}", 1)
 
         return content_str.encode('utf-8')
 
