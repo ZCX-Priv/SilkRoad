@@ -12,7 +12,7 @@
                 bottom: 20px;
                 left: 50%;
                 transform: translateX(-50%);
-                background-color: rgba(40, 44, 52, 0.85);
+                background-color: rgba(40, 44, 52, 0.85); /* 夜间模式背景色 */
                 color: white;
                 padding: 12px 20px;
                 display: flex;
@@ -28,6 +28,42 @@
                 max-width: 90%;
                 width: auto;
             }
+            /* 白昼模式的dock栏样式 */
+            .silkroad-dock.light-mode {
+                background-color: rgba(240, 240, 240, 0.85);
+                color: #333;
+                box-shadow: 0 5px 25px rgba(0, 0, 0, 0.15);
+            }
+            /* 白昼模式下的按钮和图标颜色 */
+            .silkroad-dock.light-mode .silkroad-dock-button svg,
+            .silkroad-dock.light-mode .silkroad-dock-clear svg,
+            .silkroad-dock.light-mode .silkroad-dock-theme svg,
+            .silkroad-dock.light-mode .silkroad-dock-handle svg {
+                fill: #333;
+            }
+            .silkroad-dock-theme {
+                background-color: transparent;
+                border: none;
+                color: white;
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                cursor: pointer;
+                transition: all 0.2s;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                margin-left: 15px; /* 右边距，与扫把按钮间隔 */
+            }
+            .silkroad-dock-theme:hover {
+                background-color: rgba(255, 255, 255, 0.15);
+                transform: translateY(-3px);
+            }
+            .silkroad-dock-theme svg {
+                width: 20px;
+                height: 20px;
+                fill: white;
+            }
             .silkroad-dock.collapsed {
                 width: 60px;
                 height: 60px;
@@ -38,7 +74,8 @@
             }
             .silkroad-dock.collapsed .silkroad-dock-buttons,
             .silkroad-dock.collapsed .silkroad-dock-url,
-            .silkroad-dock.collapsed .silkroad-dock-clear {
+            .silkroad-dock.collapsed .silkroad-dock-clear,
+            .silkroad-dock.collapsed .silkroad-dock-theme {
                 display: none;
             }
             .silkroad-dock-handle {
@@ -139,10 +176,10 @@
                 background-color: rgba(255, 255, 255, 0.2);
             }
             .silkroad-notification {
-                position: absolute;
-                bottom: 80px;  /* 增加初始位置的距离 */
+                position: fixed; /* 改为fixed以便固定在屏幕中央 */
+                top: 50%; /* 从顶部50%开始 */
                 left: 50%;
-                transform: translateX(-50%);
+                transform: translate(-50%, -50%); /* 水平和垂直方向都居中 */
                 background-color: rgba(40, 44, 52, 0.85);
                 color: white;
                 padding: 10px 20px;
@@ -160,7 +197,7 @@
             }
             .silkroad-notification.show {
                 opacity: 1;
-                bottom: 90px;  /* 增加显示时的距离 */
+                /* 移除bottom属性，因为我们现在使用top和transform来居中 */
             }
             .silkroad-notification-icon {
                 margin-right: 10px;
@@ -182,6 +219,19 @@
         const dock = document.createElement('div');
         dock.className = 'silkroad-dock';
         
+        // 检查并应用保存的主题设置
+        try {
+            const savedTheme = localStorage.getItem('silkroad-theme') || 'dark'; // 默认夜间模式
+            if (savedTheme === 'light') {
+                document.body.classList.add('light-mode');
+            } else {
+                document.body.classList.add('dark-mode'); // 默认夜间模式
+            }
+        } catch (e) {
+            console.error('读取主题设置失败:', e);
+            document.body.classList.add('dark-mode'); // 出错时默认使用夜间模式
+        }
+        
         // 创建通知元素
         const notification = document.createElement('div');
         notification.className = 'silkroad-notification';
@@ -199,22 +249,30 @@
         homeBtn.title = '返回首页';
         homeBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M10,20V14H14V20H19V12H22L12,3L2,12H5V20H10Z"/></svg>`;
         homeBtn.addEventListener('click', function() {
-            // 获取当前URL的域名部分
-            const urlObj = new URL(window.location.href);
-            const domain = urlObj.origin;
-            window.location.href = domain;
+            // 直接跳转到根路径
+            window.location.href = '/';
         });
         buttons.appendChild(homeBtn);
         
-         // 刷新按钮
-         const refreshBtn = document.createElement('button');
-         refreshBtn.className = 'silkroad-dock-button';
-         refreshBtn.title = '刷新页面';
-         refreshBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg>`;
-         refreshBtn.addEventListener('click', function() {
-             location.reload();
-         });
-         buttons.appendChild(refreshBtn);
+        // 返回上一页按钮
+        const backBtn = document.createElement('button');
+        backBtn.className = 'silkroad-dock-button';
+        backBtn.title = '返回上一页';
+        backBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z"/></svg>`;
+        backBtn.addEventListener('click', function() {
+            window.history.back();
+        });
+        buttons.appendChild(backBtn);
+        
+        // 刷新按钮
+        const refreshBtn = document.createElement('button');
+        refreshBtn.className = 'silkroad-dock-button';
+        refreshBtn.title = '刷新页面';
+        refreshBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg>`;
+        refreshBtn.addEventListener('click', function() {
+            location.reload();
+        });
+        buttons.appendChild(refreshBtn);
         
         dock.appendChild(buttons);
         
@@ -223,20 +281,100 @@
         urlDisplay.className = 'silkroad-dock-url';
         urlDisplay.title = '点击复制URL';
         
-        // 提取并显示实际访问的URL（去除代理前缀）
-        let currentUrl = window.location.href;
-        // 尝试从代理URL中提取实际URL
-        const proxyMatch = currentUrl.match(/https?:\/\/[^\/]+\/(https?:\/\/.+)/);
-        if (proxyMatch && proxyMatch[1]) {
-            currentUrl = proxyMatch[1];
+        // 提取并显示实际访问的URL（去除代理前缀）- 增强健壮性
+        let currentUrl = '';
+        try {
+            currentUrl = window.location.href || '';
+            
+            // 尝试从代理URL中提取实际URL
+            if (currentUrl) {
+                const proxyMatch = currentUrl.match(/https?:\/\/[^\/]+\/(https?:\/\/.+)/);
+                if (proxyMatch && proxyMatch[1] && proxyMatch[1].startsWith('http')) {
+                    currentUrl = proxyMatch[1];
+                }
+            }
+        } catch (e) {
+            console.error('获取URL失败:', e);
+            currentUrl = '无法获取URL';
+        }
+        
+        // 确保URL不为空
+        if (!currentUrl) {
+            currentUrl = '无法获取URL';
         }
         
         urlDisplay.textContent = currentUrl;
         dock.appendChild(urlDisplay);
         
+        // 白昼/夜间模式切换按钮 - 放在URL容器右侧，扫把按钮左侧
+        const themeToggleBtn = document.createElement('button');
+        themeToggleBtn.className = 'silkroad-dock-theme';
+        themeToggleBtn.title = '切换白昼/夜间模式';
+        // 默认显示月亮图标（表示当前是夜间模式，点击后切换到白昼模式）
+        themeToggleBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M17.75,4.09L15.22,6.03L16.13,9.09L13.5,7.28L10.87,9.09L11.78,6.03L9.25,4.09L12.44,4L13.5,1L14.56,4L17.75,4.09M21.25,11L19.61,12.25L20.2,14.23L18.5,13.06L16.8,14.23L17.39,12.25L15.75,11L17.81,10.95L18.5,9L19.19,10.95L21.25,11M18.97,15.95C19.8,15.87 20.69,17.05 20.16,17.8C19.84,18.25 19.5,18.67 19.08,19.07C15.17,23 8.84,23 4.94,19.07C1.03,15.17 1.03,8.83 4.94,4.93C5.34,4.53 5.76,4.17 6.21,3.85C6.96,3.32 8.14,4.21 8.06,5.04C7.79,7.9 8.75,10.87 10.95,13.06C13.14,15.26 16.1,16.22 18.97,15.95M17.33,17.97C14.5,17.81 11.7,16.64 9.53,14.5C7.36,12.31 6.2,9.5 6.04,6.68C3.23,9.82 3.34,14.64 6.35,17.66C9.37,20.67 14.19,20.78 17.33,17.97Z"></path></svg>`;
+        
+        // 设置默认为夜间模式（不添加类，因为默认就是夜间模式）
+        
+        // 添加点击事件
+        themeToggleBtn.addEventListener('click', function() {
+            // 切换dock栏的类名
+            if (dock.classList.contains('light-mode')) {
+                // 切换到夜间模式
+                dock.classList.remove('light-mode');
+                // 更改图标为月亮（表示当前是夜间模式，点击后切换到白昼模式）
+                themeToggleBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M17.75,4.09L15.22,6.03L16.13,9.09L13.5,7.28L10.87,9.09L11.78,6.03L9.25,4.09L12.44,4L13.5,1L14.56,4L17.75,4.09M21.25,11L19.61,12.25L20.2,14.23L18.5,13.06L16.8,14.23L17.39,12.25L15.75,11L17.81,10.95L18.5,9L19.19,10.95L21.25,11M18.97,15.95C19.8,15.87 20.69,17.05 20.16,17.8C19.84,18.25 19.5,18.67 19.08,19.07C15.17,23 8.84,23 4.94,19.07C1.03,15.17 1.03,8.83 4.94,4.93C5.34,4.53 5.76,4.17 6.21,3.85C6.96,3.32 8.14,4.21 8.06,5.04C7.79,7.9 8.75,10.87 10.95,13.06C13.14,15.26 16.1,16.22 18.97,15.95M17.33,17.97C14.5,17.81 11.7,16.64 9.53,14.5C7.36,12.31 6.2,9.5 6.04,6.68C3.23,9.82 3.34,14.64 6.35,17.66C9.37,20.67 14.19,20.78 17.33,17.97Z"></path></svg>`;
+                
+                // 显示通知
+                const themeNotification = notification.cloneNode(true);
+                themeNotification.innerHTML = `<span>已切换到夜间模式</span>`;
+                document.body.appendChild(themeNotification);
+                setTimeout(function() {
+                    themeNotification.classList.add('show');
+                    setTimeout(function() {
+                        themeNotification.classList.remove('show');
+                        setTimeout(function() {
+                            if (themeNotification.parentNode) {
+                                themeNotification.parentNode.removeChild(themeNotification);
+                            }
+                        }, 300);
+                    }, 2000);
+                }, 10);
+            } else {
+                // 切换到白昼模式
+                dock.classList.add('light-mode');
+                // 更改图标为太阳（表示当前是白昼模式，点击后切换到夜间模式）
+                themeToggleBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2L14.39,5.42C13.65,5.15 12.84,5 12,5C11.16,5 10.35,5.15 9.61,5.42L12,2M3.34,7L7.5,6.65C6.9,7.16 6.36,7.78 5.94,8.5C5.5,9.24 5.25,10 5.11,10.79L3.34,7M3.36,17L5.12,13.23C5.26,14 5.53,14.78 5.95,15.5C6.37,16.24 6.91,16.86 7.5,17.37L3.36,17M20.65,7L18.88,10.79C18.74,10 18.47,9.23 18.05,8.5C17.63,7.78 17.1,7.15 16.5,6.64L20.65,7M20.64,17L16.5,17.36C17.09,16.85 17.62,16.22 18.04,15.5C18.46,14.77 18.73,14 18.87,13.21L20.64,17M12,22L9.59,18.56C10.33,18.83 11.14,19 12,19C12.82,19 13.63,18.83 14.37,18.56L12,22Z"></path></svg>`;
+                
+                // 显示通知
+                const themeNotification = notification.cloneNode(true);
+                themeNotification.innerHTML = `<span>已切换到白昼模式</span>`;
+                document.body.appendChild(themeNotification);
+                setTimeout(function() {
+                    themeNotification.classList.add('show');
+                    setTimeout(function() {
+                        themeNotification.classList.remove('show');
+                        setTimeout(function() {
+                            if (themeNotification.parentNode) {
+                                themeNotification.parentNode.removeChild(themeNotification);
+                            }
+                        }, 300);
+                    }, 2000);
+                }, 10);
+            }
+            
+            // 保存用户偏好到localStorage
+            try {
+                localStorage.setItem('silkroad-dock-theme', dock.classList.contains('light-mode') ? 'light' : 'dark');
+            } catch (e) {
+                console.error('保存主题偏好失败:', e);
+            }
+        });
+        
+        dock.appendChild(themeToggleBtn);
+
         // 清除缓存按钮（扫把）- 放在URL容器右侧
         const clearCacheBtn = document.createElement('button'); // 修正拼写错误：buttom -> button
-        clearCacheBtn.className = 'silkroad-dock-clear'; // 使用handle样式
+        clearCacheBtn.className = 'silkroad-dock-clear'; 
         clearCacheBtn.title = '清除该网站缓存';
         clearCacheBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M19.36,2.72L20.78,4.14L15.06,9.85C16.13,11.39 16.28,13.24 15.38,14.44L9.06,8.12C10.26,7.22 12.11,7.37 13.65,8.44L19.36,2.72M5.93,17.57C3.92,15.56 2.69,13.16 2.35,10.92L7.23,8.83L14.67,16.27L12.58,21.15C10.34,20.81 7.94,19.58 5.93,17.57Z"/></svg>`;
         
@@ -308,6 +446,32 @@
         
         // 添加点击复制URL功能
         urlDisplay.addEventListener('click', function() {
+            // 确保有URL可复制
+            if (!currentUrl || currentUrl === '无法获取URL') {
+                // 创建通知元素的副本
+                const errorNotification = notification.cloneNode(true);
+                errorNotification.innerHTML = `<span>无法获取有效URL</span>`;
+                
+                // 显示通知
+                document.body.appendChild(errorNotification);
+                setTimeout(function() {
+                    errorNotification.classList.add('show');
+                    
+                    // 2秒后隐藏通知
+                    setTimeout(function() {
+                        errorNotification.classList.remove('show');
+                        
+                        // 动画完成后移除通知元素
+                        setTimeout(function() {
+                            if (errorNotification.parentNode) {
+                                errorNotification.parentNode.removeChild(errorNotification);
+                            }
+                        }, 300);
+                    }, 2000);
+                }, 10);
+                return;
+            }
+            
             // 创建临时文本区域
             const textarea = document.createElement('textarea');
             textarea.value = currentUrl;
@@ -315,30 +479,62 @@
             textarea.style.left = '-9999px';
             document.body.appendChild(textarea);
             
-            // 选择文本并复制
-            textarea.select();
-            document.execCommand('copy');
-            
-            // 移除临时元素
-            document.body.removeChild(textarea);
-            
-            // 显示通知
-            document.body.appendChild(notification);
-            setTimeout(function() {
-                notification.classList.add('show');
+            try {
+                // 选择文本并复制
+                textarea.select();
+                const successful = document.execCommand('copy');
                 
-                // 2秒后隐藏通知
+                // 移除临时元素
+                document.body.removeChild(textarea);
+                
+                // 显示通知
+                const copyNotification = notification.cloneNode(true);
+                copyNotification.innerHTML = `<span>${successful ? '链接已复制到剪贴板' : '复制失败，请重试'}</span>`;
+                
+                document.body.appendChild(copyNotification);
                 setTimeout(function() {
-                    notification.classList.remove('show');
+                    copyNotification.classList.add('show');
                     
-                    // 动画完成后移除通知元素
+                    // 2秒后隐藏通知
                     setTimeout(function() {
-                        if (notification.parentNode) {
-                            notification.parentNode.removeChild(notification);
-                        }
-                    }, 300);
-                }, 2000);
-            }, 10);
+                        copyNotification.classList.remove('show');
+                        
+                        // 动画完成后移除通知元素
+                        setTimeout(function() {
+                            if (copyNotification.parentNode) {
+                                copyNotification.parentNode.removeChild(copyNotification);
+                            }
+                        }, 300);
+                    }, 2000);
+                }, 10);
+            } catch (e) {
+                console.error('复制URL失败:', e);
+                // 移除临时元素
+                if (textarea.parentNode) {
+                    document.body.removeChild(textarea);
+                }
+                
+                // 显示错误通知
+                const errorNotification = notification.cloneNode(true);
+                errorNotification.innerHTML = `<span>复制失败，请重试</span>`;
+                
+                document.body.appendChild(errorNotification);
+                setTimeout(function() {
+                    errorNotification.classList.add('show');
+                    
+                    // 2秒后隐藏通知
+                    setTimeout(function() {
+                        errorNotification.classList.remove('show');
+                        
+                        // 动画完成后移除通知元素
+                        setTimeout(function() {
+                            if (errorNotification.parentNode) {
+                                errorNotification.parentNode.removeChild(errorNotification);
+                            }
+                        }, 300);
+                    }, 2000);
+                }, 10);
+            }
         });
         
         // 添加到页面
