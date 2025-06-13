@@ -23,5 +23,43 @@
     "DOMAIN": "127.0.0.1",
     "BIND_IP": "",
     "PORT":8080,
-    "SERVER": "https://127.0.0.1:8080/"
+    "SERVER": "https://127.0.0.1:8080/",
+    
+    "TEMPLATE_ENCODING": "utf-8",
+    
+    "PERFORMANCE": {
+        "HTTP_CLIENT_POOL_SIZE": 100,
+        "MAX_WORKER_THREADS": 200,
+        "SESSION_CACHE_TTL": 300,
+        "LOG_SAMPLE_RATE": 0.1,
+        "ENABLE_PERFORMANCE_MODE": true
+    },
+    
+    "HTTP": {
+        "ENABLE_HTTP2": true,
+        "MAX_RETRIES": 3,
+        "TIMEOUT": 30.0
+    },
+    
+    "STREAM": {
+        "BUFFER_SIZE": 8192,
+        "ASYNC_PRELOAD": true,
+        "ASYNC_PRELOAD_MAX_SIZE": 50,
+        "LARGE_FILE_THRESHOLD": 1048576
+    },
+    
+    "CACHE_CONTROL": {
+        "BY_MIME": {
+            "text/html": 3600,
+            "text/css": 86400,
+            "application/javascript": 86400,
+            "image/*": 604800,
+            "video/*": 604800,
+            "audio/*": 604800,
+            "application/octet-stream": 86400,
+            "*": 3600
+        },
+        "MAX_AGE": 86400,
+        "MAX_SIZE": 524288000
+    }
 }

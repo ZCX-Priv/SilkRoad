@@ -6,7 +6,7 @@ import time
 import json
 import http.server
 import http.client
-import datetime  # 添加此行
+import datetime
 from http import HTTPStatus
 from socketserver import ThreadingMixIn
 from urllib import parse
@@ -24,6 +24,25 @@ from loguru import logger
 import glob
 import queue
 import concurrent.futures
+import threading
+
+def preload_streamed_response_content_async(response_obj, buffer_queue, chunk_size=8192):
+    """异步预加载响应内容到缓冲队列"""
+    try:
+        for chunk in response_obj.iter_bytes(chunk_size):
+            try:
+                buffer_queue.put(chunk, timeout=10)
+            except queue.Full:
+                logger.error("缓冲队列已满，无法继续预加载")
+                break
+        # 放入结束标记
+        buffer_queue.put(None, timeout=10)
+    except Exception as e:
+        logger.error(f"预加载响应内容时出错: {e}")
+        buffer_queue.put(None, timeout=10)
+    finally:
+        # 确保线程正常退出
+        return
 
 # ------------------ 配置与数据加载 ------------------
 with open('databases/config.json', 'r', encoding='utf-8') as config_file:
@@ -34,6 +53,9 @@ with open('databases/users.json', 'r', encoding='utf-8') as users_file:
 
 # 设置 http.client 最大请求头数量，修复 "get more than 100 headers" 错误
 http.client._MAXHEADERS = 1000
+
+# ------------------ 正则表达式定义 (旧的复杂正则已被移除) ------------------
+# 旧的 regex_url_rewriter 已被更健壮的逻辑替代，此处为空
 
 # ------------------ 系统与资源管理 ------------------
 def periodic_gc():
@@ -125,69 +147,66 @@ script_manager = ScriptManager()
 # ------------------ HTTP连接池管理 ------------------
 class HttpClientPool:
     def __init__(self, pool_size=100):
-        self.pool = queue.Queue(maxsize=pool_size)
-        self.pool_size = pool_size
-        self.created_clients = 0  # 跟踪已创建的客户端数量
-        # 延迟初始化，不再一次性创建所有客户端
-        # 而是按需创建，最多创建pool_size个
-        
+        self.clients = []
+        self.max_clients = pool_size
+        self.lock = threading.Lock()
+        self.session_map = {}
+        self.domain_session_map = {}
+    
     def init_pool(self):
         # 此方法不再使用，保留为空以兼容现有代码
         pass
     
-    def get_client(self):
-        try:
-            return self.pool.get(block=False)
-        except queue.Empty:
-            # 如果池已空且未达到最大数量，创建新客户端
-            if self.created_clients < self.pool_size:
-                self.created_clients += 1
-                logger.debug(f"创建新的HTTP客户端 ({self.created_clients}/{self.pool_size})")
-                return httpx.Client(
+    def get_client(self, domain=None):
+        """获取一个可用的客户端，优先返回与指定域名关联的客户端"""
+        with self.lock:
+            # 如果指定了域名，尝试获取该域名的专用客户端
+            if domain and domain in self.domain_session_map:
+                return self.domain_session_map[domain]
+            
+            # 否则从通用池中获取
+            if not self.clients:
+                # 创建一个新的客户端
+                client = httpx.Client(
+                    http2=config.get("HTTP", {}).get("ENABLE_HTTP2", True),
                     verify=False,
+                    timeout=config.get("HTTP", {}).get("TIMEOUT", 30.0),
                     follow_redirects=False,
-                    timeout=30.0,
-                    http2=False,
-                    transport=httpx.HTTPTransport(retries=2)
+                    transport=httpx.HTTPTransport(retries=config.get("HTTP", {}).get("MAX_RETRIES", 2))
                 )
-            else:
-                # 如果已达到最大数量，等待可用客户端（最多等待1秒）
-                try:
-                    return self.pool.get(block=True, timeout=1)
-                except queue.Empty:
-                    # 如果等待超时，创建临时客户端（不计入池中）
-                    logger.warning("HTTP客户端池已满且无可用客户端，创建临时客户端")
-                    return httpx.Client(
-                        verify=False,
-                        follow_redirects=False,
-                        timeout=30.0,
-                        http2=False,
-                        transport=httpx.HTTPTransport(retries=2)
-                    )
+                
+                # 如果指定了域名，将此客户端与域名关联
+                if domain:
+                    self.domain_session_map[domain] = client
+                    
+                return client
+            return self.clients.pop()
     
-    def release_client(self, client):
-        try:
-            # 检查客户端是否仍然可用
-            if hasattr(client, 'is_closed') and not client.is_closed:
-                # 如果客户端有is_closed属性且未关闭
-                self.pool.put(client, block=False)
-            elif not hasattr(client, 'is_closed') and hasattr(client, '_transport') and not client._transport.is_closed:
-                # 如果客户端没有is_closed属性但有_transport属性且未关闭
-                self.pool.put(client, block=False)
+    def release_client(self, client, domain=None):
+        """释放客户端回连接池"""
+        with self.lock:
+            # 如果客户端与特定域名关联，保持关联
+            if domain and domain in self.domain_session_map and self.domain_session_map[domain] == client:
+                return
+                
+            # 否则放回通用池
+            if len(self.clients) < self.max_clients:
+                self.clients.append(client)
             else:
-                # 客户端已关闭，减少计数
-                self.created_clients -= 1
+                # 如果池已满，关闭客户端
                 client.close()
-        except queue.Full:
-            # 如果池已满，关闭客户端
-            client.close()
-        except Exception as e:
-            # 处理其他异常
-            logger.error(f"释放HTTP客户端时出错: {e}")
-            try:
+    
+    def clear(self):
+        """清空连接池"""
+        with self.lock:
+            for client in self.clients:
                 client.close()
-            except:
-                pass
+            self.clients.clear()
+            
+            # 清空域名关联的客户端
+            for domain, client in self.domain_session_map.items():
+                client.close()
+            self.domain_session_map.clear()
 
 # ------------------ 缓存管理类 ------------------
 class CacheManager:
@@ -198,15 +217,20 @@ class CacheManager:
         self.html_cache_dir = os.path.join(self.base_dir, "html")
         self.media_cache_dir = os.path.join(self.base_dir, "media")
         self.response_cache_dir = os.path.join(self.base_dir, "responses")
-        self.max_cache_size = 500 * 1024 * 1024  # 500MB
-        self.max_cache_age = 24 * 60 * 60  # 24小时
         
         # 从配置文件中读取缓存设置
+        cache_control = config.get("CACHE_CONTROL", {})
+        self.max_cache_size = cache_control.get("MAX_SIZE", 500 * 1024 * 1024)  # 默认500MB
+        self.max_cache_age = cache_control.get("MAX_AGE", 24 * 60 * 60)  # 默认24小时
+        
         self.cache_enabled = config.get("CACHE_ENABLED", True)  # 默认启用缓存
         self.cache_html = config.get("CACHE_HTML", True)  # 默认缓存HTML
         self.cache_media = config.get("CACHE_MEDIA", True)  # 默认缓存媒体文件
         self.cache_other = config.get("CACHE_OTHER", True)  # 默认缓存其他响应
         self.cache_large_files = config.get("CACHE_LARGE_FILES", False)  # 默认不缓存大文件
+        
+        # 缓存控制策略
+        self.cache_control_by_mime = cache_control.get("BY_MIME", {})
         
         # 确保缓存目录存在
         self._ensure_cache_dirs()
@@ -919,13 +943,42 @@ USER_AGENTS = [
 class Proxy(object):
     def __init__(self, handler):
         self.handler = handler
-        # 从请求路径中提取目标 URL（假定形如 /http://... 或 /https://...）
-        self.url = self.handler.path[1:]
-        parse_result = parse.urlparse(self.url)
-        self.scheme = parse_result.scheme
-        self.netloc = parse_result.netloc
-        self.site = self.scheme + '://' + self.netloc
-        self.path = parse_result.path
+        # 从请求路径中提取目标 URL
+        path = self.handler.path
+        
+        # 处理没有协议的URL（如 /www.baidu.com/favicon.ico）
+        if path.startswith('/'):
+            if path[1:].startswith('http://') or path[1:].startswith('https://'):
+                # 正常的代理URL格式：/http://... 或 /https://...
+                self.url = path[1:]
+            elif path.startswith('/http') and not path.startswith('/http://') and not path.startswith('/https://'):
+                # 处理可能的错误格式，如 /https:/www.baidu.com
+                self.url = path[1:].replace(':/','://')
+            elif path[1:].startswith('www.') and '.' in path[1:].split('/')[0]:
+                # 没有协议的域名URL，添加https://
+                self.url = 'https://' + path[1:]
+            else:
+                # 相对路径或其他格式，标记为无效URL
+                self.url = path
+                self.is_valid_url = False
+                return
+        else:
+            self.url = path
+        
+        # 标记为有效URL
+        self.is_valid_url = True
+        
+        try:
+            parse_result = parse.urlparse(self.url)
+            self.scheme = parse_result.scheme
+            self.netloc = parse_result.netloc
+            self.site = self.scheme + '://' + self.netloc if self.scheme and self.netloc else ''
+            self.path = parse_result.path
+        except Exception as e:
+            logger.error(f"URL解析错误: {self.url}, 错误: {str(e)}")
+            self.is_valid_url = False
+            return
+            
         # 定义无效请求头列表，这些请求头会被过滤掉
         self.invalid_headers = {
             "cf-connecting-ip", "x-forwarded-for", "x-real-ip",
@@ -942,6 +995,11 @@ class Proxy(object):
         # 判断是否为 WebSocket 请求，若是则调用占位处理
         if self.handler.headers.get('Upgrade', '').lower() == 'websocket':
             self.process_websocket()
+            return
+
+        # 检查URL是否有效
+        if not hasattr(self, 'is_valid_url') or not self.is_valid_url:
+            self.process_error(f"unknown url type: '{self.handler.path}'")
             return
 
         self.process_request()
@@ -1054,97 +1112,109 @@ class Proxy(object):
         # 检查是否可缓存
         cacheable = r.status_code == 200 and self.handler.command == 'GET' and cache_manager.cache_enabled
         
-        # 如果响应为 HTML，则进行链接修正处理
-        if "text/html" in content_type:
-            # 尝试使用UTF-8编码处理文本内容
-            content = self.revision_link(r.content, 'utf-8')
-            try:
-                # 尝试使用原始编码解码，然后转为UTF-8
-                content = content.decode(r.encoding or 'utf-8').encode('utf-8')
-                content_type = "text/html; charset=utf-8"
-            except UnicodeDecodeError:
-                # 如果UTF-8解码失败，回退到ASCII编码（忽略错误）
-                logger.warning(f"无法使用UTF-8解码内容，回退到ASCII编码: {self.url}")
-                content = content.decode('ascii', errors='ignore').encode('ascii')
-                content_type = "text/html; charset=ascii"
-            content_length = len(content)
-        else:
-            # 对于非 HTML 大文件或流媒体，采用流式传输，不做链接修改
-            content = r.content if r.content is not None else b''
-            content_length = len(content)
-
+        # 判断是否为流媒体内容
+        is_stream_media = any(media_type in content_type.lower() for media_type in ['video/', 'audio/', 'application/octet-stream'])
+        is_large_file = int(r.headers.get('Content-Length', 0)) > 1024 * 1024  # 大于1MB
+        
         # 发送响应头
         self.handler.send_response(r.status_code)
-        # 转发 Content-Range 等头，支持断点续传
+        
+        # 转发必要的响应头
         if "Content-Range" in r.headers:
             self.handler.send_header("Content-Range", r.headers["Content-Range"])
         if "location" in r.headers:
             self.handler.send_header('Location', self.revision_location(r.headers['location']))
         if "content-type" in r.headers:
-            self.handler.send_header('Content-Type', r.headers['content-type'])
+            # 对于HTML内容，强制使用UTF-8，防止乱码
+            if "text/html" in r.headers['content-type']:
+                 self.handler.send_header('Content-Type', "text/html; charset=utf-8")
+            else:
+                 self.handler.send_header('Content-Type', r.headers['content-type'])
         if "set-cookie" in r.headers:
             self.revision_set_cookie(r.headers['set-cookie'])
-        # 如果为 HTML，则使用修正后的内容长度，否则转发原始 Content-Length（如果有）
-        self.handler.send_header('Content-Length', content_length)
+        
         # 根据客户端请求决定连接是否保持
         client_conn = self.handler.headers.get('Connection', '').lower()
         conn_value = 'keep-alive' if client_conn.lower() == 'keep-alive' else 'close'
         self.handler.send_header('Connection', conn_value)
         self.handler.send_header('Access-Control-Allow-Origin', '*')
         
-        # 判断是否为大文件（例如超过 1MB）或非 HTML 内容
-        is_large_file = int(r.headers.get('Content-Length', 0)) > 1024 * 1024
-        is_html = "text/html" in content_type
-        
-        # 尝试缓存响应内容（如果是可缓存的响应）
-        if cacheable:
-            # 对于HTML内容，缓存修正后的内容
-            if is_html and cache_manager.cache_html:
-                cache_manager.save_to_cache(url, content, content_type, r.headers)
-            # 对于非HTML内容或小文件，直接缓存原始内容
-            elif not is_large_file:
-                if ("image/" in content_type or "video/" in content_type or "audio/" in content_type) and cache_manager.cache_media:
-                    cache_manager.save_to_cache(url, r.content, content_type, r.headers)
-                elif cache_manager.cache_other:
-                    cache_manager.save_to_cache(url, r.content, content_type, r.headers)
-            # 对于大文件，可以选择不缓存或仅缓存部分内容
-            elif is_large_file and cache_manager.cache_large_files:
-                logger.debug(f"缓存大文件: {url}")
-                cache_manager.save_to_cache(url, r.content, content_type, r.headers)
-        
-        if is_html and not is_large_file:
-            # 对 HTML 内容进行链接修正
-            content = self.revision_link(r.content, 'utf-8')
-            try:
-                content = content.decode(r.encoding or 'utf-8').encode('utf-8')
-                content_type = "text/html; charset=utf-8"
-            except UnicodeDecodeError:
-                logger.warning(f"无法使用UTF-8解码内容，回退到ASCII编码: {self.url}")
-                content = content.decode('ascii', errors='ignore').encode('ascii')
-                content_type = "text/html; charset=ascii"
-            
-            # 更新内容长度，确保反映插入脚本后的实际长度
-            content_length = len(content)
-            self.handler.send_header('Content-Length', content_length)
-            self.handler.end_headers()
-            self.handler.wfile.write(content)
-        else:
-            # 对于大文件或非 HTML 内容，使用流式传输
-            # 不设置 Content-Length，使用分块传输编码
+        # 对于流媒体或大文件使用分块传输
+        if is_stream_media or is_large_file:
+            # 使用分块传输编码
             self.handler.send_header('Transfer-Encoding', 'chunked')
             self.handler.end_headers()
             
-            # 使用 8KB 的块大小进行流式传输
-            chunk_size = 8192
-            for chunk in r.iter_bytes(chunk_size):
-                # 写入分块大小（十六进制）
-                self.handler.wfile.write(f"{len(chunk):X}\r\n".encode('ascii'))
-                # 写入数据块
-                self.handler.wfile.write(chunk)
-                self.handler.wfile.write(b"\r\n")
+            # 创建缓冲队列和预加载线程
+            buffer_queue = queue.Queue(maxsize=50)  # 最多预加载50个块
+            t = threading.Thread(
+                target=preload_streamed_response_content_async,
+                args=(r, buffer_queue, 8192),  # 8KB 的块大小
+                daemon=True
+            )
+            t.start()
             
-            # 写入结束块
-            self.handler.wfile.write(b"0\r\n\r\n")
+            # 流式传输内容
+            try:
+                while True:
+                    try:
+                        chunk = buffer_queue.get(timeout=15)
+                        buffer_queue.task_done()
+                        
+                        if chunk is None:  # 结束标记
+                            break
+                            
+                        # 写入分块大小（十六进制）
+                        self.handler.wfile.write(f"{len(chunk):X}\r\n".encode('ascii'))
+                        # 写入数据块
+                        self.handler.wfile.write(chunk)
+                        self.handler.wfile.write(b"\r\n")
+                        
+                    except queue.Empty:
+                        logger.warning("获取流内容超时")
+                        break
+                
+                # 写入结束块
+                self.handler.wfile.write(b"0\r\n\r\n")
+                
+                # 如果可缓存且启用了媒体缓存，尝试缓存内容
+                if cacheable and is_stream_media and cache_manager.cache_media and not is_large_file:
+                    # 这里可以实现媒体内容的缓存逻辑
+                    pass
+                    
+            except Exception as e:
+                logger.error(f"流式传输内容时出错: {e}")
+        else:
+            # 对于普通内容，使用标准处理方式
+            if "text/html" in content_type:
+                # 尝试使用响应头中的编码，如果失败则回退
+                try:
+                    encoding = r.encoding or 'utf-8'
+                    content = self.revision_link(r.content, encoding)
+                except Exception:
+                    # 如果指定的编码失败，尝试使用 utf-8 忽略错误
+                    content = self.revision_link(r.content, 'utf-8')
+                
+                # 更新内容长度
+                content_length = len(content)
+                self.handler.send_header('Content-Length', content_length)
+                self.handler.end_headers()
+                self.handler.wfile.write(content)
+                
+                # 缓存HTML内容
+                if cacheable and cache_manager.cache_html:
+                    cache_manager.save_to_cache(url, content, "text/html; charset=utf-8", r.headers)
+            else:
+                # 对于其他非HTML内容
+                content = r.content
+                content_length = len(content)
+                self.handler.send_header('Content-Length', content_length)
+                self.handler.end_headers()
+                self.handler.wfile.write(content)
+                
+                # 缓存其他内容
+                if cacheable and cache_manager.cache_other and not is_large_file:
+                    cache_manager.save_to_cache(url, content, content_type, r.headers)
 
     def process_error(self, error):
         """处理代理请求错误"""
@@ -1167,7 +1237,12 @@ class Proxy(object):
             self.handler.end_headers()
             self.handler.wfile.write(encoded)
         else:
-            self.handler.send_error(HTTPStatus.BAD_REQUEST, str(error))
+            # 确保错误消息只包含ASCII字符，避免编码错误
+            try:
+                error_message = str(error).encode('ascii', errors='ignore').decode('ascii')
+            except:
+                error_message = "Request processing error"
+            self.handler.send_error(HTTPStatus.BAD_REQUEST, error_message)
         logger.error("Proxy error: {}", error)
 
     def modify_request_header(self, header, value):
@@ -1180,98 +1255,178 @@ class Proxy(object):
             self.handler.headers._headers.remove(target_header)
             new_value = value(target_header[1]) if callable(value) else value
             self.handler.headers._headers.append((header, new_value))
-
-    def revision_location(self, location):
-        # 自动重定向原始链接为代理链接，支持 http(s)、相对和省略协议的情况
-        if location.startswith('http://') or location.startswith('https://'):
-            new_location = config['SERVER'] + location
-        elif location.startswith('//'):
-            new_location = config['SERVER'] + self.scheme + ':' + location
-        elif location.startswith('/'):
-            new_location = config['SERVER'] + self.site + location
-        else:
-            new_location = config['SERVER'] + self.site + self.path + '/' + location
-        return new_location
-
-    def revision_link(self, body, coding):
-        # 对响应体中出现的链接进行修正，包括同页跳转、内链跳转、自动格式化与纠正错误链接
-        if coding is None:
-            return body
-        # 示例规则，可根据需求扩展更多解析规则
-        rules = [
-            ("'{}http://", config['SERVER']),
-            ('"{}http://', config['SERVER']),
-            ("'{}https://", config['SERVER']),
-            ('"{}https://', config['SERVER']),
-            ('"{}//', config['SERVER'] + self.scheme + ':'),
-            ("'{}//", config['SERVER'] + self.scheme + ':'),
-            ('"{}/', config['SERVER'] + self.site),
-            ("'{}/", config['SERVER'] + self.site),
-        ]
-        for rule in rules:
-            pattern = rule[0].replace('{}', '')
-            replacement = rule[0].format(rule[1]).encode('utf-8')
-            body = body.replace(pattern.encode('utf-8'), replacement)
-            # 在HTML内容中插入自定义JS脚本
-        try:
-            # 只处理HTML内容
-            content_str = body.decode('utf-8', errors='ignore')
-            if "</body>" in content_str:
-                # 获取所有自定义脚本
-                scripts = script_manager.get_all_scripts()
-                if scripts:
-                    # 创建脚本标签
-                    script_tags = "\n<!-- 自定义JS脚本开始 -->\n"
-                    for script_name, script_content in scripts.items():
-                        script_tags += f"<script>/* {script_name} */\n{script_content}\n</script>\n"
-                    script_tags += "<!-- 自定义JS脚本结束 -->\n"
-                    
-                    # 在</body>标签前插入脚本
-                    content_str = content_str.replace("</body>", f"</body>{script_tags}")
-                    body = content_str.encode('utf-8')
-        except Exception as e:
-            logger.error(f"插入自定义JS脚本失败: {e}")
-        return body
-
-    def revision_set_cookie(self, cookies):
-        # 将响应中的 set-cookie 进行调整，确保域名、路径等正确
-        cookie_list = []
-        half_cookie = None
-        for _cookie in cookies.split(', '):
-            if half_cookie is not None:
-                cookie_list.append(', '.join([half_cookie, _cookie]))
-                half_cookie = None
-            elif 'Expires' in _cookie or 'expires' in _cookie:
-                half_cookie = _cookie
-            else:
-                cookie_list.append(_cookie)
-        for _cookie in cookie_list:
-            # 过滤无效的 Cookie
-            if self.is_valid_cookie(_cookie):
-                self.handler.send_header('Set-Cookie', self.revision_response_cookie(_cookie))
     
     def is_valid_cookie(self, cookie):
-        """检查 Cookie 是否有效"""
-        # 过滤掉空值或格式不正确的 Cookie
-        if not cookie or '=' not in cookie:
+        """判断Cookie是否有效"""
+        # 过滤掉空Cookie或只包含空格的Cookie
+        if not cookie or cookie.strip() == "":
             return False
-        # 可以添加更多的验证规则，例如检查 Cookie 名称是否符合规范
+        
+        # 过滤掉不包含等号的Cookie（无效格式）
+        if "=" not in cookie:
+            return False
+            
+        # 过滤掉某些特定的Cookie（如有需要）
+        # 例如：if cookie.startswith("__Host-"):
+        #          return False
+        
         return True
 
+    def revision_set_cookie(self, cookies):
+        """使用正则表达式处理Set-Cookie头"""
+        cookie_regex = re.compile(r'([^,;]+(?:; [^,;]+)*)(?:, |$)')
+        for cookie_match in cookie_regex.finditer(cookies):
+            cookie = cookie_match.group(1)
+            # 过滤无效的 Cookie
+            if self.is_valid_cookie(cookie):
+                self.handler.send_header('Set-Cookie', self.revision_response_cookie(cookie))
+    
     def revision_response_cookie(self, cookie):
-        # 设置 Cookie 24小时过期
-        cookie = re.sub(r'(expires\=[^,;]+)', 
-                        'expires=' + (datetime.datetime.now() + datetime.timedelta(hours=24)).strftime('%a, %d %b %Y %H:%M:%S GMT'), 
-                        cookie, flags=re.IGNORECASE)
-        # 如果没有 expires 属性，添加 24 小时过期时间
-        if 'expires=' not in cookie.lower():
-            cookie += '; expires=' + (datetime.datetime.now() + datetime.timedelta(hours=24)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+        """使用正则表达式修改Cookie属性"""
+        # 设置24小时过期
+        expires_time = (datetime.datetime.now() + datetime.timedelta(hours=24)).strftime('%a, %d %b %Y %H:%M:%S GMT')
         
-        cookie = re.sub(r'domain\=[^,;]+', 'domain=.{}'.format(config['DOMAIN']), cookie, flags=re.IGNORECASE)
-        cookie = re.sub(r'path\=\/', 'path={}/'.format('/' + self.site), cookie, flags=re.IGNORECASE)
+        # 使用正则表达式替换或添加expires属性
+        if re.search(r'expires=[^,;]+', cookie, re.IGNORECASE):
+            cookie = re.sub(r'expires=[^,;]+', f'expires={expires_time}', cookie, flags=re.IGNORECASE)
+        else:
+            cookie += f'; expires={expires_time}'
+        
+        # 替换domain属性
+        if re.search(r'domain=[^,;]+', cookie, re.IGNORECASE):
+            cookie = re.sub(r'domain=[^,;]+', f'domain=.{config["DOMAIN"]}', cookie, flags=re.IGNORECASE)
+        
+        # 替换path属性
+        if re.search(r'path=/', cookie, re.IGNORECASE):
+            cookie = re.sub(r'path=/', f'path=/{self.site}', cookie, flags=re.IGNORECASE)
+        
+        # 如果使用HTTP协议，移除secure属性
         if config['SCHEME'] == 'http':
             cookie = re.sub(r'secure;?', '', cookie, flags=re.IGNORECASE)
+        
         return cookie
+
+    # =========================================================================
+    # =====================  核心修改区域开始  ================================
+    # =========================================================================
+    
+    def revision_location(self, location):
+        """
+        【已修改】使用 urllib.parse.urljoin 修正重定向链接，更健壮、更简单。
+        """
+        # self.url 是原始请求的完整URL, location是Location头的值
+        # urljoin 会正确处理绝对路径(`/path`)、相对路径(`sub/page`)和完整URL(`http://...`)
+        new_target_url = parse.urljoin(self.url, location)
+        
+        # 拼接代理前缀
+        proxy_server = config['SERVER'].rstrip('/')
+        return f"{proxy_server}/{new_target_url}"
+
+    def revision_link(self, body, coding):
+        """
+        【已修改】使用更健壮的逻辑修正响应体中的链接。
+        - 废弃了单一复杂的正则表达式。
+        - 使用 `urllib.parse.urljoin` 安全地解析相对和绝对路径。
+        - 使用多个简单的正则表达式定位URL属性，然后处理其值。
+        - 仅重写指向目标站点的链接，避免修改外部链接。
+        """
+        if not coding:
+            return body
+
+        try:
+            content_str = body.decode(coding, errors='ignore')
+        except (UnicodeDecodeError, TypeError):
+            logger.warning(f"无法使用编码 {coding} 解码内容，将返回原始数据。 URL: {self.url}")
+            return body
+
+        # 代理服务器地址，确保末尾没有斜杠
+        proxy_prefix = config['SERVER'].rstrip('/')
+        # 当前请求的URL，作为解析相对路径的基准
+        base_url = self.url
+        # 目标网站的域名 (e.g., "www.google.com")
+        target_netloc = self.netloc
+
+        def rewrite_url_if_internal(url):
+            """辅助函数：检查URL是否为内部链接，如果是则重写。"""
+            # 忽略空链接和特殊协议链接
+            if not url or url.startswith(('javascript:', 'mailto:', '#', 'data:')):
+                return url
+
+            # 使用 urljoin 将各种URL（相对、绝对）转换为完整的绝对URL
+            absolute_url = parse.urljoin(base_url, url)
+            
+            # 检查解析后的URL是否属于当前代理的目标域
+            try:
+                parsed_absolute_url = parse.urlparse(absolute_url)
+                if parsed_absolute_url.netloc == target_netloc:
+                    # 是内部链接，添加代理前缀
+                    return f"{proxy_prefix}/{absolute_url}"
+            except Exception as e:
+                logger.warning(f"URL解析失败: {absolute_url}, 错误: {e}")
+                pass
+
+            # 默认返回原始URL（外部链接或解析失败的链接）
+            return url
+
+        # 1. 重写HTML中常见的链接属性 (href, src, action, etc.)
+        def rewrite_html_attr(match):
+            attr, quote, url = match.groups()
+            rewritten_url = rewrite_url_if_internal(url)
+            return f'{attr}={quote}{rewritten_url}{quote}'
+        
+        # 匹配 <a href="...">, <img src="..."> 等
+        link_pattern = re.compile(r"""\b(href|src|action|data-src|formaction|background|poster)\s*=\s*(['"])(.*?)\2""", re.IGNORECASE | re.DOTALL)
+        content_str = link_pattern.sub(rewrite_html_attr, content_str)
+
+        # 2. 特殊处理 srcset 属性 (用于响应式图片)
+        def rewrite_srcset_attr(match):
+            attr, quote, srcset_value = match.groups()
+            if not srcset_value:
+                return match.group(0)
+            
+            # srcset 是由逗号分隔的 "url descriptor" 列表
+            parts = srcset_value.split(',')
+            rewritten_parts = []
+            for part in parts:
+                part = part.strip()
+                # 分离 URL 和描述符 (e.g., "image.jpg 1x")
+                url_match = re.match(r'(\S+)\s*(.*)', part)
+                if url_match:
+                    url, descriptor = url_match.groups()
+                    rewritten_url = rewrite_url_if_internal(url)
+                    rewritten_parts.append(f'{rewritten_url} {descriptor}'.strip())
+            
+            rewritten_srcset = ', '.join(rewritten_parts)
+            return f'{attr}={quote}{rewritten_srcset}{quote}'
+
+        srcset_pattern = re.compile(r"""\b(srcset)\s*=\s*(['"])(.*?)\2""", re.IGNORECASE | re.DOTALL)
+        content_str = srcset_pattern.sub(rewrite_srcset_attr, content_str)
+
+        # 3. 重写CSS中的 url(...)
+        def rewrite_css_url(match):
+            quote, url = match.groups()
+            rewritten_url = rewrite_url_if_internal(url)
+            return f'url({quote}{rewritten_url}{quote})'
+            
+        css_url_pattern = re.compile(r"""url\((['"]?)(.*?)\1\)""", re.IGNORECASE)
+        content_str = css_url_pattern.sub(rewrite_css_url, content_str)
+        
+        # 在</body>标签前插入自定义JS脚本
+        if "</body>" in content_str:
+            scripts = script_manager.get_all_scripts()
+            if scripts:
+                script_tags = "\n<!-- Custom JS Scripts Start -->\n"
+                for script_name, script_content in scripts.items():
+                    script_tags += f"<script>/* {script_name} */\n{script_content}\n</script>\n"
+                script_tags += "<!-- Custom JS Scripts End -->\n"
+                content_str = content_str.replace("</body>", f"{script_tags}</body>", 1)
+
+        return content_str.encode('utf-8')
+
+    # =========================================================================
+    # =====================  核心修改区域结束  ================================
+    # =========================================================================
+
 
 # ------------------ HTTP 请求处理 ------------------
 class SilkRoadHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
@@ -1761,28 +1916,19 @@ class ThreadingHttpServer(ThreadingMixIn, http.server.HTTPServer):
         # 使用线程池处理请求，而不是为每个请求创建新线程
         self._thread_pool.submit(self.process_request_thread, request, client_address)
 
-# 性能调优配置
-PERFORMANCE_CONFIG = {
-    'HTTP_CLIENT_POOL_SIZE': 100,      # HTTP客户端连接池大小
-    'MAX_WORKER_THREADS': 200,        # 最大工作线程数
-    'SESSION_CACHE_TTL': 300,         # 会话缓存有效期（秒）
-    'LOG_SAMPLE_RATE': 1,           # 日志采样率（0-1）
-    'ENABLE_PERFORMANCE_MODE': True   # 是否启用性能模式
-}
-
 # ------------------ 主程序入口 ------------------
 if __name__ == '__main__':
     # 设置日志 - 在高并发模式下调整日志级别
-    if PERFORMANCE_CONFIG['ENABLE_PERFORMANCE_MODE']:
+    if config.get("PERFORMANCE", {}).get("ENABLE_PERFORMANCE_MODE", True):
         logger.add(config['LOG_FILE'], rotation="500 MB", level="WARNING")  # 只记录警告和错误
     else:
         logger.add(config['LOG_FILE'], rotation="500 MB", level="INFO")
     
     # 初始化HTTP客户端连接池
-    http_client_pool = HttpClientPool(pool_size=PERFORMANCE_CONFIG['HTTP_CLIENT_POOL_SIZE'])
+    http_client_pool = HttpClientPool(pool_size=config.get("PERFORMANCE", {}).get("HTTP_CLIENT_POOL_SIZE", 100))
     
     # 设置线程池大小
-    ThreadingHttpServer.max_worker_threads = PERFORMANCE_CONFIG['MAX_WORKER_THREADS']
+    ThreadingHttpServer.max_worker_threads = config.get("PERFORMANCE", {}).get("MAX_WORKER_THREADS", 200)
     
     # 执行系统自检和缓存清理
     system_check_and_cleanup()
