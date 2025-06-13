@@ -46,6 +46,11 @@ pip install -r requirements.txt
 - `LOG_FILE`: 日志文件路径
 - `LOGIN_PATH`: 登录页面路径
 - `FAVICON_PATH`: 网站图标路径
+- `ENABLE_KEEP_ALIVE`: 是否启用HTTP持久连接
+- `KEEP_ALIVE_TIMEOUT`: 持久连接超时时间（秒）
+- `KEEP_ALIVE_MAX`: 最大持久连接数
+- `LOGIN_VERIFICATION_ENABLED`: 是否启用登录验证
+- `RANDOM_UA_ENABLED`: 是否启用随机User-Agent
 - `CACHE_ENABLED`: 是否启用缓存
 - `CACHE_HTML`/`CACHE_MEDIA`/`CACHE_OTHER`: HTML、媒体和其他文件的缓存设置
 - `CACHE_LARGE_FILES`: 是否缓存大文件
@@ -56,6 +61,42 @@ pip install -r requirements.txt
 - `BIND_IP`: 绑定IP地址
 - `PORT`: 端口号
 - `SERVER`: 服务器URL
+- `TEMPLATE_ENCODING`: 模板文件编码（默认为utf-8）
+
+### 性能配置
+
+`PERFORMANCE` 部分包含以下配置：
+
+- `HTTP_CLIENT_POOL_SIZE`: HTTP客户端连接池大小
+- `MAX_WORKER_THREADS`: 最大工作线程数
+- `SESSION_CACHE_TTL`: 会话缓存生存时间（秒）
+- `LOG_SAMPLE_RATE`: 日志采样率
+- `ENABLE_PERFORMANCE_MODE`: 是否启用性能模式
+
+### HTTP配置
+
+`HTTP` 部分包含以下配置：
+
+- `ENABLE_HTTP2`: 是否启用HTTP/2协议
+- `MAX_RETRIES`: 请求失败最大重试次数
+- `TIMEOUT`: 请求超时时间（秒）
+
+### 流媒体配置
+
+`STREAM` 部分包含以下配置：
+
+- `BUFFER_SIZE`: 缓冲区大小（字节）
+- `ASYNC_PRELOAD`: 是否启用异步预加载
+- `ASYNC_PRELOAD_MAX_SIZE`: 异步预加载最大大小（MB）
+- `LARGE_FILE_THRESHOLD`: 大文件阈值（字节）
+
+### 缓存控制配置
+
+`CACHE_CONTROL` 部分包含以下配置：
+
+- `BY_MIME`: 按MIME类型设置缓存时间（秒）
+- `MAX_AGE`: 默认最大缓存时间（秒）
+- `MAX_SIZE`: 最大缓存大小（字节）
 
 ## 用户管理
 
@@ -85,6 +126,104 @@ python SilkRoad.py
 3. 使用配置的用户名和密码登录
 
 4. 通过代理访问网站，格式为：`http://127.0.0.1:8080/http://example.com`
+
+## 模板引擎使用说明
+
+SilkRoad-Proxy内置了一个功能强大的模板引擎，用于渲染HTML页面。模板引擎支持变量替换、条件语句、循环语句和资源路径处理等功能。
+
+### 变量替换
+
+在模板中使用 `{{ 变量名 }}` 语法可以替换为上下文中的变量值：
+
+```html
+<!-- 基本变量替换 -->
+<h1>欢迎，{{ username }}</h1>
+
+<!-- 访问嵌套属性 -->
+<p>邮箱：{{ user.email }}</p>
+```
+
+### 条件语句
+
+使用 `{% if 条件 %}...{% endif %}` 语法可以根据条件显示内容：
+
+```html
+<!-- 简单条件 -->
+{% if is_admin %}
+<div class="admin-panel">管理员面板</div>
+{% endif %}
+
+<!-- 带else的条件 -->
+{% if is_logged_in %}
+<a href="/profile">个人资料</a>
+{% else %}
+<a href="/login">登录</a>
+{% endif %}
+```
+
+### 循环语句
+
+使用 `{% for 变量 in 集合 %}...{% endfor %}` 语法可以遍历集合：
+
+```html
+<!-- 遍历列表 -->
+<ul>
+{% for item in items %}
+  <li>{{ item }}</li>
+{% endfor %}
+</ul>
+
+<!-- 遍历嵌套数据 -->
+<table>
+{% for user in users %}
+  <tr>
+    <td>{{ user.name }}</td>
+    <td>{{ user.email }}</td>
+  </tr>
+{% endfor %}
+</table>
+```
+
+### 资源路径处理
+
+模板引擎会自动处理静态资源的路径，支持以下格式：
+
+```html
+<link rel="stylesheet" href="{{path:"static/css",filename:"style.css"}}">
+```
+
+### 在Python代码中使用模板
+
+可以使用 `Template` 类的 `render_template` 方法渲染自定义模板：
+
+```python
+# 导入模板类
+from SilkRoad import template
+
+# 准备上下文变量
+context = {
+    'title': '自定义页面',
+    'user': {
+        'name': '张三',
+        'is_admin': True
+    },
+    'items': ['项目1', '项目2', '项目3']
+}
+
+# 渲染模板
+html_content = template.render_template('custom_template.html', context)
+```
+
+### 模板配置
+
+在 `config.json` 中可以配置模板相关参数：
+
+- `TEMPLATE_ENCODING`: 模板文件编码（默认为utf-8）
+- `INDEX_FILE`: 主页模板路径
+- `LOGIN_FILE`: 登录页模板路径
+- `CHAT_FILE`: 聊天页模板路径
+- `FORBIDDEN_FILE`: 403禁止访问页面模板路径
+- `NOT_FOUND_FILE`: 404页面未找到模板路径
 
 ## 使用Nginx反向代理
 
@@ -313,6 +452,60 @@ A: 在 `databases/config.json` 中将 `CACHE_ENABLED` 设置为 `false`。
 
 ### Q: 如何添加自定义脚本？
 A: 在 `scripts` 目录下创建新的 `.js` 文件，系统会自动加载并注入到代理页面中。
+
+### Q: 遇到 [SSL: BAD_LENGTH] 错误怎么办？
+A: 这是SSL协议不兼容导致的问题，可以通过修改 `SilkRoad.py` 文件中的 `HttpClientPool` 类的 `get_client` 方法，添加自定义SSL上下文配置来解决：
+
+```python
+# 在HttpClientPool类的get_client方法中修改
+def get_client(self):
+    # 其他代码...
+    
+    # 创建自定义SSL上下文
+    import ssl
+    ssl_context = ssl.create_default_context()
+    # 配置支持的协议版本
+    ssl_context.options |= ssl.OP_NO_SSLv2
+    ssl_context.options |= ssl.OP_NO_SSLv3
+    # 设置密码套件优先级
+    ssl_context.set_ciphers('DEFAULT@SECLEVEL=1')
+    
+    # 在创建httpx客户端时使用自定义SSL上下文
+    client = httpx.Client(
+        http2=config.get("HTTP", {}).get("ENABLE_HTTP2", True),
+        timeout=config.get("HTTP", {}).get("TIMEOUT", 30.0),
+        follow_redirects=False,
+        transport=httpx.HTTPTransport(
+            retries=config.get("HTTP", {}).get("MAX_RETRIES", 2),
+            verify=ssl_context  # 使用自定义SSL上下文替代verify=False
+        )
+    )
+    
+    # 其他代码...
+    return client
+```
+
+这个修改通过创建自定义SSL上下文，显式禁用了不安全的SSLv2和SSLv3协议，并设置了更宽松的密码套件安全级别，以兼容更多的服务器。
+
+### Q: 遇到 ERR_TOO_MANY_REDIRECTS 循环重定向问题怎么办？
+A: 循环重定向通常是由于代理前缀在重定向URL中重复添加导致的。可以修改 `SilkRoad.py` 文件中 `Proxy` 类的 `revision_location` 方法，添加检查逻辑避免重复添加代理前缀：
+
+```python
+def revision_location(self, location):
+    # 检查重定向URL是否已经包含代理前缀
+    proxy_prefix = f"{config['SCHEME']}://{config['DOMAIN']}:{config['PORT']}/"
+    if location.startswith(proxy_prefix):
+        # 已包含代理前缀，不需要再添加
+        return location
+        
+    # 原有的URL处理逻辑
+    if location.startswith("/"):
+        return f"{self.scheme}://{self.netloc}{location}"
+    elif not location.startswith("http"):
+        return f"{self.scheme}://{self.netloc}/{location}"
+    else:
+        return location
+```
 
 ## 许可证
 
