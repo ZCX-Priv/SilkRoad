@@ -4,6 +4,7 @@ import random
 import string
 import time
 import json
+import socket
 import http.server
 import http.client
 import datetime
@@ -51,11 +52,13 @@ with open('databases/config.json', 'r', encoding='utf-8') as config_file:
 with open('databases/users.json', 'r', encoding='utf-8') as users_file:
     users_data = json.load(users_file)
 
+# 设置默认的持久连接参数
+config.setdefault("ENABLE_KEEP_ALIVE", True)  # 默认启用持久连接
+config.setdefault("KEEP_ALIVE_TIMEOUT", 60)  # 持久连接超时时间（秒）
+config.setdefault("KEEP_ALIVE_MAX", 100)  # 单个连接最大请求数
+
 # 设置 http.client 最大请求头数量，修复 "get more than 100 headers" 错误
 http.client._MAXHEADERS = 1000
-
-# ------------------ 正则表达式定义 (旧的复杂正则已被移除) ------------------
-# 旧的 regex_url_rewriter 已被更健壮的逻辑替代，此处为空
 
 # ------------------ 系统与资源管理 ------------------
 def periodic_gc():
@@ -167,12 +170,24 @@ class HttpClientPool:
             # 否则从通用池中获取
             if not self.clients:
                 # 创建一个新的客户端
+                # 创建自定义SSL上下文
+                ssl_context = ssl.create_default_context()
+                # 配置支持的协议版本
+                ssl_context.options |= ssl.OP_NO_SSLv2
+                ssl_context.options |= ssl.OP_NO_SSLv3
+                # 设置密码套件优先级
+                ssl_context.set_ciphers('DEFAULT@SECLEVEL=1')
+                
                 client = httpx.Client(
                     http2=config.get("HTTP", {}).get("ENABLE_HTTP2", True),
                     verify=False,
                     timeout=config.get("HTTP", {}).get("TIMEOUT", 30.0),
                     follow_redirects=False,
-                    transport=httpx.HTTPTransport(retries=config.get("HTTP", {}).get("MAX_RETRIES", 2))
+                    transport=httpx.HTTPTransport(
+                        retries=config.get("HTTP", {}).get("MAX_RETRIES", 2),
+                        # 使用自定义SSL上下文
+                        verify=ssl_context
+                    )
                 )
                 
                 # 如果指定了域名，将此客户端与域名关联
@@ -1135,8 +1150,13 @@ class Proxy(object):
         
         # 根据客户端请求决定连接是否保持
         client_conn = self.handler.headers.get('Connection', '').lower()
-        conn_value = 'keep-alive' if client_conn.lower() == 'keep-alive' else 'close'
+        conn_value = 'keep-alive' if client_conn == 'keep-alive' and config.get("ENABLE_KEEP_ALIVE", True) else 'close'
         self.handler.send_header('Connection', conn_value)
+        
+        # 如果使用keep-alive，添加Keep-Alive头部
+        if conn_value == 'keep-alive':
+            self.handler.send_header('Keep-Alive', 'timeout=60, max=100')
+            
         self.handler.send_header('Access-Control-Allow-Origin', '*')
         
         # 对于流媒体或大文件使用分块传输
@@ -1306,13 +1326,10 @@ class Proxy(object):
         
         return cookie
 
-    # =========================================================================
-    # =====================  核心修改区域开始  ================================
-    # =========================================================================
-    
     def revision_location(self, location):
         """
         【已修改】使用 urllib.parse.urljoin 修正重定向链接，更健壮、更简单。
+        添加检查逻辑，避免重复添加代理前缀，解决循环重定向问题。
         """
         # self.url 是原始请求的完整URL, location是Location头的值
         # urljoin 会正确处理绝对路径(`/path`)、相对路径(`sub/page`)和完整URL(`http://...`)
@@ -1320,16 +1337,22 @@ class Proxy(object):
         
         # 拼接代理前缀
         proxy_server = config['SERVER'].rstrip('/')
+        
+        # 检查是否已经包含代理前缀，避免重复添加
+        proxy_pattern = re.escape(proxy_server) + r'/https?://'
+        if re.match(proxy_pattern, new_target_url):
+            # 已经包含代理前缀，直接返回
+            return new_target_url
+        
+        # 检查是否是重定向到自身，这可能导致循环重定向
+        if new_target_url == self.url:
+            # 如果重定向到自身，直接返回原始URL加代理前缀
+            return f"{proxy_server}/{new_target_url}"
+        
+        # 正常情况，添加代理前缀
         return f"{proxy_server}/{new_target_url}"
 
     def revision_link(self, body, coding):
-        """
-        【已修改】使用更健壮的逻辑修正响应体中的链接。
-        - 废弃了单一复杂的正则表达式。
-        - 使用 `urllib.parse.urljoin` 安全地解析相对和绝对路径。
-        - 使用多个简单的正则表达式定位URL属性，然后处理其值。
-        - 仅重写指向目标站点的链接，避免修改外部链接。
-        """
         if not coding:
             return body
 
@@ -1347,7 +1370,7 @@ class Proxy(object):
         target_netloc = self.netloc
 
         def rewrite_url_if_internal(url):
-            """辅助函数：检查URL是否为内部链接，如果是则重写。"""
+            """辅助函数：检查URL并重写。现在同时处理内部链接和外部链接。"""
             # 忽略空链接和特殊协议链接
             if not url or url.startswith(('javascript:', 'mailto:', '#', 'data:')):
                 return url
@@ -1361,11 +1384,14 @@ class Proxy(object):
                 if parsed_absolute_url.netloc == target_netloc:
                     # 是内部链接，添加代理前缀
                     return f"{proxy_prefix}/{absolute_url}"
+                elif parsed_absolute_url.netloc and parsed_absolute_url.scheme in ('http', 'https'):
+                    # 是外部链接，也添加代理前缀
+                    return f"{proxy_prefix}/{absolute_url}"
             except Exception as e:
                 logger.warning(f"URL解析失败: {absolute_url}, 错误: {e}")
                 pass
 
-            # 默认返回原始URL（外部链接或解析失败的链接）
+            # 默认返回原始URL（特殊链接或解析失败的链接）
             return url
 
         # 1. 重写HTML中常见的链接属性 (href, src, action, etc.)
@@ -1423,24 +1449,58 @@ class Proxy(object):
 
         return content_str.encode('utf-8')
 
-    # =========================================================================
-    # =====================  核心修改区域结束  ================================
-    # =========================================================================
-
-
 # ------------------ HTTP 请求处理 ------------------
 class SilkRoadHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"  # 支持持久连接
+    timeout = 60  # 设置连接超时时间，单位秒
 
     def __init__(self, request, client_address, server):
         self.login_path = config['LOGIN_PATH']
         self.favicon_path = config['FAVICON_PATH']
         self.server_name = config['SERVER_NAME']
         self.session_cookie_name = config['SESSION_COOKIE_NAME']
-        self.domain_re = re.compile(r'(?=^.{3,255}$)[a-zA-Z0-9][-a-zA-Z0-9]{0,62}(\.[a-zA-Z0-9][-a-zA-Z0-9]{0,62})+')
+        self.domain_re = re.compile(r'(?=^.{3,255}$)[a-zA-Z0-9][-a-zA-Z0-9]{0,62}(\.[a-zA-Z0-9][-a-zA-Z0-9]{0,62})+')        
+        self.keep_alive = True  # 默认启用持久连接
         with open(config['FAVICON_FILE'], 'rb') as f:
             self.favicon_data = f.read()
         super().__init__(request, client_address, server)
+
+    def handle_one_request(self):
+        """处理单个请求，支持持久连接"""
+        try:
+            self.raw_requestline = self.rfile.readline(65537)
+            if len(self.raw_requestline) > 65536:
+                self.requestline = ''
+                self.request_version = ''
+                self.command = ''
+                self.send_error(HTTPStatus.REQUEST_URI_TOO_LONG)
+                return
+            if not self.raw_requestline:
+                self.close_connection = True
+                return
+            if not self.parse_request():
+                # 请求解析失败
+                return
+            
+            # 检查Connection头，决定是否保持连接
+            conn_header = self.headers.get('Connection', '').lower()
+            self.keep_alive = conn_header == 'keep-alive'
+            
+            # 处理请求
+            self.do_request()
+            self.wfile.flush()
+            
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError) as e:
+            # 客户端断开连接，记录日志并关闭连接
+            logger.debug(f"客户端断开连接: {e}")
+            self.close_connection = True
+        except socket.timeout as e:
+            # 连接超时，记录日志并关闭连接
+            logger.debug(f"连接超时: {e}")
+            self.close_connection = True
+        except Exception as e:
+            logger.error(f"处理请求时出错: {e}")
+            self.close_connection = True
 
     def do_GET(self):
         self.do_request()
@@ -1450,7 +1510,7 @@ class SilkRoadHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
 
     def do_HEAD(self):
         self.do_request()
-
+    
     def do_request(self):
         """处理所有请求的核心逻辑"""
         # 减少日志记录频率，只记录关键信息
