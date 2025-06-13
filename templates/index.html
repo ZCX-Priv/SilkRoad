@@ -202,6 +202,10 @@
                         </div>
                     </div>
                 </div>
+                <!-- 添加刷新页面按钮 -->
+                <div class="refresh-page" id="refresh-page" title="刷新页面">
+                    <i class="iconfont icon-xiugai"></i>
+                </div>
                 <!-- 设置图标 -->
                 <div id="menu">
                     <i id="icon-menu" class="iconfont icon-shezhi"></i>
@@ -362,7 +366,7 @@
                                                 <div class="from_text">代理</div>
                                                 <div class="proxy-setting-container">
                                                     <label class="toggle-switch">
-                                                        <input type="checkbox" id="quick_proxy" checked>
+                                                        <input type="checkbox" id="quick_proxy" name="proxy" checked>
                                                         <span class="slider round"></span>
                                                     </label>
                                                 </div>
@@ -470,10 +474,112 @@
     <noscript>
         <div class="noscript fixed-top">请开启 JavaScript</div>
     </noscript>
+    
+    <!-- 添加查看壁纸按钮 -->
+    <div class="view-wallpaper" id="view-wallpaper" title="喜欢吗？点击查看当前壁纸">
+        <i class="iconfont icon-tupian"></i>
+        <span>喜欢吗？点击查看当前壁纸</span>
+    </div>
+    
+    <!-- 壁纸查看弹出层 -->
+    <div id="wallpaper-modal" class="wallpaper-modal">
+        <div class="wallpaper-modal-content">
+            <span class="wallpaper-close">&times;</span>
+            <img id="wallpaper-preview" class="wallpaper-preview" src="" alt="壁纸预览">
+        </div>
+    </div>
+    
     <!-- JS -->
     <script type="text/javascript" src="{{path:"static/js",filename:"main.js"}}"></script>
     <script type="text/javascript" src="{{path:"static/js",filename:"set.js"}}"></script>
     <script type="text/javascript" src="{{path:"static/js",filename:"js.cookie.js"}}"></script>
+    
+    <!-- 壁纸查看功能的JavaScript代码 -->
+    <script type="text/javascript">
+        // 查看当前壁纸按钮点击事件
+        $(document).ready(function() {
+    $("#view-wallpaper").click(function() {
+        // 从localStorage获取壁纸数据
+        var bgData = getCurrentWallpaper();
+        
+        // 如果localStorage中没有，则从当前显示的背景图片获取URL作为备选
+        if (!bgData) {
+            bgData = $("#bg").attr("src");
+            console.log("localStorage中没有壁纸数据，使用当前背景：" + bgData);
+        } else {
+            console.log("从localStorage获取壁纸数据成功");
+        }
+        
+        if (bgData) {
+            // 判断是否为Base64数据
+            if (bgData.startsWith('data:image')) {
+                // 直接使用Base64数据
+                $("#wallpaper-preview").attr("src", bgData);
+            } else {
+                // 处理URL
+                if (bgData.startsWith('./')) {
+                    // 如果是相对路径，转换为绝对路径
+                    bgData = window.location.origin + bgData.substring(1);
+                } else if (bgData.startsWith('/http')) {
+                    // 如果是代理URL，去掉开头的斜杠
+                    bgData = bgData.substring(1);
+                }
+                
+                // 设置URL
+                $("#wallpaper-preview").attr("src", bgData);
+            }
+            
+            // 显示弹出层
+            $("#wallpaper-modal").css("display", "block");
+                    
+                    // 禁止背景滚动
+                    $("body").css("overflow", "hidden");
+                } else {
+                    iziToast.error({
+                        title: '错误',
+                        message: '无法获取当前壁纸',
+                        position: 'topCenter'
+                    });
+                }
+            });
+            
+            // 关闭按钮点击事件
+            $(".wallpaper-close").click(function() {
+                $("#wallpaper-modal").css("display", "none");
+                $("body").css("overflow", "auto");
+            });
+            
+            // 点击弹出层背景关闭弹出层
+            $("#wallpaper-modal").click(function(event) {
+                if (event.target === this) {
+                    $("#wallpaper-modal").css("display", "none");
+                    $("body").css("overflow", "auto");
+                }
+            });
+            
+            // ESC键关闭弹出层
+            $(document).keydown(function(event) {
+                if (event.key === "Escape" && $("#wallpaper-modal").css("display") === "block") {
+                    $("#wallpaper-modal").css("display", "none");
+                    $("body").css("overflow", "auto");
+                }
+            });
+        });
+    </script>
+    <script type="text/javascript">
+    // 刷新页面按钮点击事件
+    $(document).ready(function() {
+        $("#refresh-page").click(function() {
+            // 添加旋转动画
+            $(this).find("i").css("transform", "rotate(360deg)");
+            
+            // 延迟300ms后刷新页面，让用户看到动画效果
+            setTimeout(function() {
+                location.reload();
+            }, 300);
+        });
+    });
+</script>
 </body>
 
 </html>

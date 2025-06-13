@@ -110,7 +110,7 @@ function getSeDefault() {
 
 //背景图片
 var bg_img_preinstall = {
-    "type": "1", // 1:使用主题默认的背景图片 2:关闭背景图片 3:使用自定义的背景图片
+    "type": "1", // 1:使用主题默认的背景图片 2:必应每日 3:随机风景 4:随机二次元 5:自定义
     "path": "", //自定义图片
 };
 
@@ -135,6 +135,75 @@ function setBgImg(bg_img) {
     }
     return false;
 }
+// 保存当前壁纸到localStorage（将图片内容转为Base64）
+function saveCurrentWallpaper(url) {
+    // 创建一个新的Image对象
+    var img = new Image();
+    img.crossOrigin = "Anonymous";  // 解决跨域问题
+    
+    img.onload = function() {
+        try {
+            // 创建canvas并绘制图片
+            var canvas = document.createElement("canvas");
+            canvas.width = img.width;
+            canvas.height = img.height;
+            var ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0);
+            
+            // 将图片转换为Base64格式的JPEG
+            var dataURL = canvas.toDataURL("image/jpeg", 0.8);
+            
+            // 创建JSON对象存储壁纸信息
+            var wallpaperData = {
+                dataURL: dataURL,
+                originalURL: url,
+                timestamp: new Date().getTime()
+            };
+            
+            // 存储到localStorage
+            localStorage.setItem('current_wallpaper', JSON.stringify(wallpaperData));
+            console.log("壁纸内容已保存到localStorage");
+        } catch (e) {
+            // 如果转换失败，至少保存URL
+            console.error("保存壁纸内容失败：", e);
+            localStorage.setItem('current_wallpaper_url', url);
+        }
+    };
+    
+    img.onerror = function() {
+        // 如果加载失败，保存URL作为备选
+        console.error("加载壁纸图片失败");
+        localStorage.setItem('current_wallpaper_url', url);
+    };
+    
+    // 设置图片源
+    img.src = url;
+}
+
+// 从localStorage获取当前壁纸
+function getCurrentWallpaper() {
+    // 尝试获取存储的壁纸数据
+    var wallpaperData = localStorage.getItem('current_wallpaper');
+    
+    if (wallpaperData) {
+        try {
+            // 解析JSON数据
+            var data = JSON.parse(wallpaperData);
+            return data.dataURL;  // 返回Base64数据
+        } catch (e) {
+            console.error("解析壁纸数据失败：", e);
+        }
+    }
+    
+    // 如果没有找到壁纸数据或解析失败，尝试获取URL
+    var wallpaperURL = localStorage.getItem('current_wallpaper_url');
+    if (wallpaperURL) {
+        return wallpaperURL;
+    }
+    
+    // 如果都没有，尝试从Cookie中获取（兼容旧版本）
+    return Cookies.get('current_wallpaper');
+}
 
 // 设置-壁纸
 function setBgImgInit() {
@@ -149,10 +218,12 @@ function setBgImgInit() {
         $("#wallpaper-button").fadeOut(300);
     }
 
+    var wallpaperUrl = "";
+    
     switch (bg_img["type"]) {
         case "1":
             var pictures = new Array();
-            pictures[0] = './img/background1.webp';
+            pictures[0] = './static/img/background1.webp';
             pictures[1] = './static/img/background2.webp';
             pictures[2] = './static/img/background3.webp';
             pictures[3] = './static/img/background4.webp';
@@ -163,21 +234,35 @@ function setBgImgInit() {
             pictures[8] = './static/img/background9.webp';
             pictures[9] = './static/img/background10.webp';
             var rd = Math.floor(Math.random() * 10);
-            $('#bg').attr('src', pictures[rd]) //随机默认壁纸
+            wallpaperUrl = pictures[rd];
+            $('#bg').attr('src', wallpaperUrl); //随机默认壁纸
             break;
         case "2":
-            $('#bg').attr('src', '/https://api.dujin.org/bing/1920.php') //必应每日
+            wallpaperUrl = '/https://api.dujin.org/bing/1920.php';
+            $('#bg').attr('src', wallpaperUrl); //必应每日
             break;
         case "3":
-            $('#bg').attr('src', '/https://tu.ltyuanfang.cn/api/fengjing.php') //随机风景
+            wallpaperUrl = '/https://tu.ltyuanfang.cn/api/fengjing.php';
+            $('#bg').attr('src', wallpaperUrl); //随机风景
             break;
         case "4":
-            $('#bg').attr('src', '/https://www.dmoe.cc/random.php') //随机二次元
+            wallpaperUrl = '/https://www.dmoe.cc/random.php';
+            $('#bg').attr('src', wallpaperUrl); //随机二次元
             break;
         case "5":
-            $('#bg').attr('src', bg_img["path"]) //自定义
+            wallpaperUrl = bg_img["path"];
+            $('#bg').attr('src', wallpaperUrl); //自定义
             break;
     }
+    
+    // 监听图片加载完成事件，获取实际显示的图片URL
+    $('#bg').on('load', function() {
+        // 获取实际显示的图片URL（可能经过重定向）
+        var actualUrl = $(this).attr('src');
+        // 保存实际URL和图片内容到localStorage
+        saveCurrentWallpaper(actualUrl);
+        console.log("保存壁纸到localStorage：" + actualUrl); // 添加调试信息
+    });
 }
 
 // 搜索框高亮
