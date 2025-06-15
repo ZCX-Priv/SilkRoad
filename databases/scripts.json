@@ -22,7 +22,7 @@
       "name": "url-fixer.js",
       "position": "before_body_end",
       "exclude_domains": [],
-      "enabled": true
+      "enabled": false
     }
   ],
   "positions": {
