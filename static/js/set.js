@@ -64,9 +64,19 @@ var quick_list_preinstall = {
         proxy: false,
     },
     '3': {
+        title: "每日一图",
+        url: "http://192.168.40.101/工具/每日一图/index.html",
+        proxy: false,
+    },
+    '4': {
         title: "虎扑社区",
         url: "https://www.hupu.com/",
         proxy: true,
+    },
+    '5': {
+        title: "海螺聆听",
+        url: "https://qtings.com/",
+        proxy: false,
     },
 };
 
