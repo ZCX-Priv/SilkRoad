@@ -795,6 +795,9 @@ class Template(object):
         # 添加加载chat.html的代码
         with open(config['CHAT_FILE'], encoding=encoding) as f:
             self.chat_html = f.read()
+        # 添加加载old.html的代码
+        with open(config.get('OLD_FILE', 'templates/old.html'), encoding=encoding) as f:
+            self.old_html = f.read()
 
         
         # 加载error页面模板
@@ -1021,6 +1024,12 @@ class Template(object):
         if context is None:
             context = {}
         return self._process_template(self.chat_html, context)
+        
+    def get_old_html(self, context=None):
+        """获取处理后的旧版首页HTML"""
+        if context is None:
+            context = {}
+        return self._process_template(self.old_html, context)
 
     def get_error_html(self, context=None):
         """获取处理后的错误页面HTML"""
@@ -1757,6 +1766,9 @@ class SilkRoadHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         elif self.path == '/':
             self.process_index()
             return
+        elif self.path == '/old' or self.path == '/old/':
+            self.process_old()
+            return
         elif self.path == '/chat' or self.path == '/chat/':
             self.process_chat()
             return
@@ -1909,6 +1921,8 @@ class SilkRoadHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             self.process_login()
         elif self.path == '/chat':  # 添加对/chat路径的处理
             self.process_chat()
+        elif self.path == '/old':  # 添加对/old路径的处理
+            self.process_old()
         elif self.path.startswith('/static/'):  # 处理静态资源请求
             self.process_static_file()
         elif self.path.startswith('/templates/'):  # 处理模板资源请求
@@ -1973,6 +1987,11 @@ class SilkRoadHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
 
     def process_chat(self):
         body = template.get_chat_html()
+        self.return_html(body)
+        
+    def process_old(self):
+        """处理旧版首页请求"""
+        body = template.get_old_html()
         self.return_html(body)
 
     def process_not_found(self):

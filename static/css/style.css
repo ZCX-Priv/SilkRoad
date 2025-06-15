@@ -1125,7 +1125,7 @@ input[type="radio"]:checked+label {
 }
 
 /* 查看壁纸按钮样式 */
-.view-wallpaper {
+.switch {
     position: fixed;
     bottom: 20px;
     right: 20px;
@@ -1142,11 +1142,11 @@ input[type="radio"]:checked+label {
     -webkit-backdrop-filter: blur(5px);
 }
 
-.view-wallpaper i {
+.switch i {
     margin-right: 5px;
 }
 
-.view-wallpaper:hover {
+.switch:hover {
     background-color: rgba(0, 0, 0, 0.7);
     transform: translateY(-2px);
 }
@@ -1210,15 +1210,15 @@ input[type="radio"]:checked+label {
 
 /* 适配移动端 */
 @media (max-width: 768px) {
-    .view-wallpaper span {
+    .switch span {
         display: none;
     }
     
-    .view-wallpaper {
+    .switch {
         padding: 8px;
     }
     
-    .view-wallpaper i {
+    .switch i {
         margin-right: 0;
     }
 }

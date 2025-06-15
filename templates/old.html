@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>丝绸之路</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-image: url('./static/img/silkroad.jpg');
+            background-size: cover;
+            background-position: center center;
+            background-attachment: fixed;
+            background-repeat: repeat;
+            position: relative;
+        }
+
+        .social-icons a {
+            margin: 0 10px;
+            text-decoration: none;
+        }
+
+        .search-container {
+            width: 80%;
+            max-width: 700px;
+            margin: 20px auto;
+        }
+
+        input[type="text"] {
+            font-size: 16px;
+            padding: 12px;
+            width: 100%;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-sizing: border-box;
+        }
+
+        input[type="submit"] {
+            font-size: 16px;
+            padding: 10px 20px;
+            margin-top: 10px;
+            border: none;
+            border-radius: 5px;
+            background-color: #d6b35a;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        input[type="submit"]:hover {
+            background-color: #a67c1a;
+        }
+
+        .search-engines, .common-sites, .novel-sites, .comic-sites, .game-sites {
+            width: 80%;
+            max-width: 700px;
+            margin: 20px auto;
+            border-top: 1px solid #ddd;
+            padding-top: 20px;
+        }
+
+        .section-title {
+            text-align: left;
+            color: #fff9e4;
+            margin-bottom: 15px;
+        }
+
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            grid-gap: 10px;
+            justify-content: flex-start;
+        }
+
+        .button {
+            background-color: #e7c17b;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-right: 1%;
+            padding: 8px 15px;
+            text-decoration: none;
+            color: #ffffff;
+            border: 2px solid #a89e84;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+
+        .button:hover {
+            background-color: #e0e0e0;
+        }
+
+        /* 原有样式保留 */
+        .logo {
+            margin-top: 40px;
+            display: block;
+            width: 250px; 
+            height: auto;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .logo-img {
+            max-width: 300px;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+            filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.3));
+        }
+        
+        /* 新版按钮样式 - 修改为与index.html相同的样式 */
+        .switch {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            z-index: 999;
+            display: flex;
+            align-items: center;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            text-decoration: none;
+        }
+
+        .switch i {
+            margin-right: 5px;
+        }
+
+        .switch:hover {
+            background-color: rgba(0, 0, 0, 0.7);
+            transform: translateY(-2px);
+        }
+        
+        /* 为了兼容移动设备 */
+        @media (max-width: 768px) {
+            .switch span {
+                display: none;
+            }
+            
+            .switch {
+                padding: 8px;
+            }
+            
+            .switch i {
+                margin-right: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="{{path:"static/img",filename:"logo.png"}}" alt="丝绸之路" class="logo-img">
+    </div>
+
+    <div class="search-container">
+        <form method="get" action="/">
+            <input type="text" placeholder="输入要访问的网址。。。" name="url" required>
+            <input type="submit" value="🚀 GO！">
+        </form>
+    </div>
+
+    <div class="search-engines">
+        <h3 class="section-title">搜索引擎</h3>
+        <div class="button-group">
+            <a href="/chat" class="button">AI助手</a>
+            <a href="/https://www.bing.com/" class="button">必应搜索</a>
+            <a href="/https://yandex.com/showcaptcha/" class="button">Yandex搜索</a>
+            <a href="/https://www.baidu.com/" class="button">百度搜索</a>
+            <a href="/https://www.sogou.com//" class="button">搜狗搜索</a>
+            <a href="/https://www.so.com/" class="button">360搜索</a>
+            <a href="/https://quark.sm.cn/" class="button">夸克搜索</a>
+        </div>
+    </div>
+    
+    <!-- 添加小说网站 -->
+    <div class="novel-sites">
+        <h3 class="section-title">小说网站</h3>
+        <div class="button-group">
+            <a href="/https://www.shuzhaige.com" class="button">书斋阁</a>
+            <a href="/https://www.kuaishu5.com/" class="button">快书网</a>
+            <a href="/https://www.wanmeisxs.cc/" class="button">完美世界网</a>
+            <a href="/https://www.023zw.com/" class="button">顶点小说网</a>
+            <a href="/https://m.kanshu4.com/" class="button">看书小说网</a>
+        </div>
+    </div>
+    
+    <!-- 添加漫画网站 -->
+    <div class="comic-sites">
+        <h3 class="section-title">漫画网站</h3>
+        <div class="button-group">
+            <a href="/https://dmvvv.com/" class="button">樱花动漫</a>
+            <a href="/https://cn.baozimhcn.com/" class="button">包子漫画</a>
+            <a href="/https://www.gfmh.app/" class="button">古风漫画</a>
+        </div>
+    </div>
+
+    <div class="game-sites">
+        <h3 class="section-title">游戏网站</h3>
+        <div class="button-group">
+            <a href="/https://game.moe.ms/" class="button">植物大战僵尸</a>
+            <a href="/https://subwaysurfersunblocked.org/zh" class="button">地铁跑酷</a>
+            <a href="/https://game.ppbzy.com/8-ball-billiards" class="button">8球桌球</a>
+            <a href="/https://game.ppbzy.com/uno-online/" class="button">四色牌</a>
+            <a href="/https://game.ppbzy.com/stickman-boost/" class="button">火柴人跑酷</a>
+        </div>
+    </div>
+    
+    <div class="common-sites">
+        <h3 class="section-title">其他网站</h3>
+        <div class="button-group">
+            <a href="http://192.168.40.101/" class="button">班级网盘</a>
+            <a href="/https://www.hupu.com/" class="button">虎扑社区</a>
+        </div>
+    </div>
+    
+    <!-- 添加新版按钮 - 修改为与index.html相同的结构 -->
+    <a href="/" class="switch" id="switch" title="想要更精彩？试试新版叭">
+        <i class="iconfont icon-tupian"></i>
+        <span>想要更精彩？试试新版叭</span>
+    </a>
+    
+    <!-- 添加JavaScript代码 -->
+    <script type="text/javascript" src="{{path:"static/js",filename:"jquery.min.js"}}"></script>
+    <script type="text/javascript">
+        $(document).ready(function() {
+            $("#switch").on("click", function() {
+                window.location.href = "/";
+            });
+        });
+    </script>
+</body>
+</html>

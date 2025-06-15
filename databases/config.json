@@ -5,6 +5,7 @@
     "INDEX_FILE": "templates/index.html",
     "LOGIN_FILE": "templates/login.html",
     "CHAT_FILE":"templates/chat.html",
+    "OLD_FILE": "templates/old.html",
     "ERROR_FILE": "templates/error.html",
     "LOG_FILE": "SilkRoad.log",
     "LOGIN_PATH": "/login",
