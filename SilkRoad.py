@@ -481,7 +481,7 @@ class CacheManager:
         
         return os.path.join(cache_dir, url_hash + ext)
     
-    def save_to_cache(self, url, content, content_type=None, headers=None):
+    def save_to_cache(self, url, content, content_type=None, headers=None, max_age=None):
         """保存响应内容到缓存"""
         # 如果缓存被全局禁用，直接返回
         if not self.cache_enabled:
@@ -1220,9 +1220,41 @@ class Proxy(object):
                 try:
                     # 复制所有请求头，并随机设置 User-Agent 以伪装客户端信息
                     headers = {}
+                    
+                    # 按照浏览器常见的请求头顺序添加（顺序很重要！）
+                    header_order = [
+                        'host', 'connection', 'cache-control', 'sec-ch-ua', 'sec-ch-ua-mobile', 
+                        'sec-ch-ua-platform', 'upgrade-insecure-requests', 'user-agent', 
+                        'accept', 'sec-fetch-site', 'sec-fetch-mode', 'sec-fetch-user', 
+                        'sec-fetch-dest', 'referer', 'accept-encoding', 'accept-language', 'cookie'
+                    ]
+                    
+                    # 创建有序字典保持请求头顺序
+                    ordered_headers = {}
+                    
+                    # 先按照顺序添加已有的头
+                    for header in header_order:
+                        for k, v in self.handler.headers.items():
+                            if k.lower() == header and k.lower() not in self.invalid_headers:
+                                ordered_headers[k] = v
+                    
+                    # 再添加其他头
                     for k, v in self.handler.headers.items():
-                        if k.lower() not in self.invalid_headers:
-                           headers[k] = v
+                        if k.lower() not in ordered_headers and k.lower() not in self.invalid_headers:
+                            ordered_headers[k] = v
+                    
+                    # 转换为普通字典
+                    headers = dict(ordered_headers)
+                    
+                    # 添加一些常见的浏览器请求头
+                    if 'sec-fetch-site' not in headers:
+                        headers['Sec-Fetch-Site'] = 'none'
+                    if 'sec-fetch-mode' not in headers:
+                        headers['Sec-Fetch-Mode'] = 'navigate'
+                    if 'sec-fetch-dest' not in headers:
+                        headers['Sec-Fetch-Dest'] = 'document'
+                    
+                    # 随机User-Agent
                     if config.get("RANDOM_UA_ENABLED", True):
                         headers['User-Agent'] = random.choice(config.get("USER_AGENTS", [
                             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
@@ -1322,7 +1354,11 @@ class Proxy(object):
         cacheable = r.status_code == 200 and self.handler.command == 'GET' and cache_manager.cache_enabled
         
         # 判断是否为流媒体内容
-        is_stream_media = any(media_type in content_type.lower() for media_type in ['video/', 'audio/', 'application/octet-stream'])
+        is_stream_media = any(media_type in content_type.lower() for media_type in [
+            'video/', 'audio/', 'application/octet-stream', 
+            'application/vnd.apple.mpegurl', 'application/x-mpegurl', 'application/mpegurl', # m3u8格式
+            'video/mp2t', 'video/mpeg', 'application/mp2t' # ts格式
+        ]) or url.lower().endswith(('.m3u8', '.ts'))
         is_large_file = int(r.headers.get('Content-Length', 0)) > 1024 * 1024  # 大于1MB
         
         # 发送响应头
@@ -1378,6 +1414,32 @@ class Proxy(object):
                         if chunk is None:  # 结束标记
                             break
                             
+                        # 如果是m3u8文件，需要处理其中的ts文件引用
+                        if content_type.lower() in ['application/vnd.apple.mpegurl', 'application/x-mpegurl', 'application/mpegurl'] or url.lower().endswith('.m3u8'):
+                            try:
+                                # 解码内容
+                                m3u8_content = chunk.decode('utf-8')
+                                # 使用正则表达式查找ts文件引用
+                                ts_urls = re.findall(r'(https?://[^\s\n"]+\.ts|[^\s\n"]+\.ts)', m3u8_content)
+                                # 替换相对路径为绝对路径并添加代理前缀
+                                for ts_url in ts_urls:
+                                    if not ts_url.startswith(('http://', 'https://')):
+                                        # 构建绝对URL
+                                        absolute_ts_url = parse.urljoin(self.url, ts_url)
+                                        # 添加代理前缀
+                                        proxy_ts_url = f"{config['SERVER'].rstrip('/')}/{absolute_ts_url}"
+                                        # 替换原始URL
+                                        m3u8_content = m3u8_content.replace(ts_url, proxy_ts_url)
+                                    else:
+                                        # 已经是绝对URL，只需添加代理前缀
+                                        proxy_ts_url = f"{config['SERVER'].rstrip('/')}/{ts_url}"
+                                        # 替换原始URL
+                                        m3u8_content = m3u8_content.replace(ts_url, proxy_ts_url)
+                                # 重新编码内容
+                                chunk = m3u8_content.encode('utf-8')
+                            except Exception as e:
+                                logger.error(f"处理m3u8内容时出错: {e}")
+                                
                         # 写入分块大小（十六进制）
                         self.handler.wfile.write(f"{len(chunk):X}\r\n".encode('ascii'))
                         # 写入数据块
@@ -1393,8 +1455,16 @@ class Proxy(object):
                 
                 # 如果可缓存且启用了媒体缓存，尝试缓存内容
                 if cacheable and is_stream_media and cache_manager.cache_media and not is_large_file:
-                    # 这里可以实现媒体内容的缓存逻辑
-                    pass
+                    # 对于m3u8和ts文件的特殊缓存处理
+                    if content_type.lower() in ['application/vnd.apple.mpegurl', 'application/x-mpegurl', 'application/mpegurl'] or url.lower().endswith('.m3u8'):
+                        # m3u8文件缓存时间较短
+                        cache_manager.save_to_cache(url, content, content_type, r.headers, max_age=3600)
+                    elif content_type.lower() in ['video/mp2t', 'video/mpeg', 'application/mp2t'] or url.lower().endswith('.ts'):
+                        # ts文件可以缓存较长时间
+                        cache_manager.save_to_cache(url, content, content_type, r.headers)
+                    else:
+                        # 其他媒体文件使用默认缓存策略
+                        cache_manager.save_to_cache(url, content, content_type, r.headers)
                     
             except Exception as e:
                 logger.error(f"流式传输内容时出错: {e}")

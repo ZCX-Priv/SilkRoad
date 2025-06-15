@@ -11,10 +11,10 @@
     "LOGIN_PATH": "/login",
     "FAVICON_PATH": "/favicon.ico",
     "ENABLE_KEEP_ALIVE": true,
-    "KEEP_ALIVE_TIMEOUT": 60,
-    "KEEP_ALIVE_MAX": 100,
+    "KEEP_ALIVE_TIMEOUT": 600,
+    "KEEP_ALIVE_MAX": 6000,
     "LOGIN_VERIFICATION_ENABLED": false,
-    "RANDOM_UA_ENABLED": false,
+    "RANDOM_UA_ENABLED": true,
     "CACHE_ENABLED": false,
     "CACHE_HTML": false,
     "CACHE_MEDIA": false,
@@ -33,8 +33,24 @@
     
     "USER_AGENTS": [
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Safari/605.1.15",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/116.0",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/117.0",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Safari/605.1.15",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/605.1.15",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0",
+        "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/116.0"
     ],
     
     "TEMPLATE_ENCODING": "utf-8",
@@ -48,7 +64,7 @@
     },
     
     "HTTP": {
-        "ENABLE_HTTP2": true,
+        "ENABLE_HTTP2": false,
         "MAX_RETRIES": 3,
         "TIMEOUT": 30.0
     },
@@ -69,9 +85,31 @@
             "video/*": 604800,
             "audio/*": 604800,
             "application/octet-stream": 86400,
+            "application/vnd.apple.mpegurl": 3600, 
+            "application/x-mpegurl": 3600,         
+            "application/mpegurl": 3600,          
+            "video/mp2t": 86400,                 
+            "video/mpeg": 86400,                 
+            "application/mp2t": 86400,        
             "*": 3600
         },
         "MAX_AGE": 86400,
         "MAX_SIZE": 524288000
+    },
+    
+    "SSL": {
+        "MINIMUM_VERSION": "TLSv1_2",
+        "MAXIMUM_VERSION": "TLSv1_3",
+        "CIPHERS": [
+            "ECDHE-ECDSA-AES128-GCM-SHA256",
+            "ECDHE-RSA-AES128-GCM-SHA256",
+            "ECDHE-ECDSA-AES256-GCM-SHA384",
+            "ECDHE-RSA-AES256-GCM-SHA384",
+            "ECDHE-ECDSA-CHACHA20-POLY1305",
+            "ECDHE-RSA-CHACHA20-POLY1305",
+            "TLS_AES_128_GCM_SHA256",
+            "TLS_AES_256_GCM_SHA384",
+            "TLS_CHACHA20_POLY1305_SHA256"
+        ]
     }
 }
