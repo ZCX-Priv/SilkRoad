@@ -134,6 +134,8 @@ class ScriptManager:
             
         # 加载脚本配置
         self.load_scripts_config()
+        # 确保所有脚本都有enabled字段
+        self.migrate_script_config()
     
     def load_scripts_config(self):
         """加载脚本配置文件"""
@@ -151,7 +153,7 @@ class ScriptManager:
                 # 创建默认配置
                 default_config = {
                     "scripts": [
-                        {"name": script_name, "position": "before_body_end", "exclude_domains": []}
+                        {"name": script_name, "position": "before_body_end", "exclude_domains": [], "enabled": True}
                         for script_name in os.listdir(self.scripts_dir) if script_name.endswith(".js")
                     ],
                     "positions": self.positions
@@ -165,6 +167,32 @@ class ScriptManager:
             logger.error(f"加载脚本配置失败: {e}，将使用默认配置")
             # 使用空配置
             self.scripts_config = []
+        
+        # 确保所有脚本配置都有enabled字段
+        self.migrate_script_config()
+    
+    def migrate_script_config(self):
+        """确保所有脚本配置都有enabled字段"""
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "databases", "scripts.json")
+        try:
+            if os.path.exists(config_path):
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config_data = json.load(f)
+                
+                # 检查并添加enabled字段
+                updated = False
+                for script_config in config_data.get("scripts", []):
+                    if "enabled" not in script_config:
+                        script_config["enabled"] = True
+                        updated = True
+                
+                # 如果有更新，保存配置
+                if updated:
+                    with open(config_path, 'w', encoding='utf-8') as f:
+                        json.dump(config_data, f, ensure_ascii=False, indent=2)
+                    logger.info("已为现有脚本配置添加enabled字段")
+        except Exception as e:
+            logger.error(f"迁移脚本配置失败: {e}")
     
     def get_all_scripts(self):
         """获取所有JS脚本内容"""
@@ -203,9 +231,11 @@ class ScriptManager:
             script_name = script_config.get("name")
             script_position = script_config.get("position", "before_body_end")
             exclude_domains = script_config.get("exclude_domains", [])
+            # 检查脚本是否启用
+            enabled = script_config.get("enabled", True)  # 默认为启用
             
             # 检查脚本是否应该在当前位置插入
-            if script_position == position and script_name in scripts:
+            if script_position == position and script_name in scripts and enabled:
                 # 检查域名是否被排除
                 if domain and any(domain.endswith(excluded) for excluded in exclude_domains):
                     logger.debug(f"脚本 {script_name} 在域名 {domain} 上被排除")
@@ -214,6 +244,33 @@ class ScriptManager:
                 position_scripts.append((script_name, scripts[script_name]))
         
         return position_scripts
+    
+    def update_script_status(self, script_name, enabled):
+        """更新脚本的启用状态"""
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "databases", "scripts.json")
+        try:
+            # 查找并更新脚本配置
+            for script_config in self.scripts_config:
+                if script_config.get("name") == script_name:
+                    script_config["enabled"] = enabled
+                    break
+            else:
+                logger.warning(f"未找到脚本 {script_name} 的配置")
+                return False
+                
+            # 保存更新后的配置
+            config_data = {
+                "scripts": self.scripts_config,
+                "positions": self.positions
+            }
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, ensure_ascii=False, indent=2)
+                
+            logger.info(f"已更新脚本 {script_name} 的状态为 {'启用' if enabled else '禁用'}")
+            return True
+        except Exception as e:
+            logger.error(f"更新脚本状态失败: {e}")
+            return False
     
     def get_position_tag(self, position):
         """获取位置对应的HTML标签"""
@@ -1105,7 +1162,7 @@ class Proxy(object):
             self.path = parse_result.path
             
             # 检查是否在黑名单中
-            if self.netloc and self.netloc in blacklist_data:
+            if self.netloc and config.get("BLACKLIST_ENABLED", True) and self.netloc in blacklist_data:
                 logger.warning(f"访问被黑名单阻止: {self.url}")
                 self.is_blacklisted = True
             else:
@@ -1589,21 +1646,23 @@ class Proxy(object):
         # 提取域名用于排除检查
         domain = parse.urlparse(self.url).netloc
         
-        # 处理所有定义的位置
-        for position, tag in script_manager.positions.items():
-            if tag in content_str:
-                position_scripts = script_manager.get_scripts_for_position(position, domain)
-                if position_scripts:
-                    script_tags = f"\n<!-- Custom JS Scripts for {position} Start -->\n"
-                    for script_name, script_content in position_scripts:
-                        script_tags += f"<script>/* {script_name} */\n{script_content}\n</script>\n"
-                    script_tags += f"<!-- Custom JS Scripts for {position} End -->\n"
-                    
-                    # 根据位置决定插入方式
-                    if position.startswith("after_"):
-                        content_str = content_str.replace(tag, f"{tag}{script_tags}", 1)
-                    elif position.startswith("before_"):
-                        content_str = content_str.replace(tag, f"{script_tags}{tag}", 1)
+        # 检查是否启用脚本插入功能
+        if config.get("SCRIPT_INJECTION_ENABLED", True):
+            # 处理所有定义的位置
+            for position, tag in script_manager.positions.items():
+                if tag in content_str:
+                    position_scripts = script_manager.get_scripts_for_position(position, domain)
+                    if position_scripts:
+                        script_tags = f"\n<!-- Custom JS Scripts for {position} Start -->\n"
+                        for script_name, script_content in position_scripts:
+                            script_tags += f"<script>/* {script_name} */\n{script_content}\n</script>\n"
+                        script_tags += f"<!-- Custom JS Scripts for {position} End -->\n"
+                        
+                        # 根据位置决定插入方式
+                        if position.startswith("after_"):
+                            content_str = content_str.replace(tag, f"{tag}{script_tags}", 1)
+                        elif position.startswith("before_"):
+                            content_str = content_str.replace(tag, f"{script_tags}{tag}", 1)
 
         return content_str.encode('utf-8')
 
@@ -2166,7 +2225,7 @@ if __name__ == '__main__':
     
     def custom_end_headers(self):
         """扩展end_headers方法，添加清除缓存的头"""
-        if hasattr(self, 'clear_client_cache') and self.clear_client_cache:
+        if hasattr(self, 'clear_client_cache') and self.clear_client_cache and config.get("CLEAR_CLIENT_CACHE_ENABLED", True):
             ClientCacheCleaner.add_cache_clearing_headers(self)
         original_end_headers(self)
     
@@ -2192,6 +2251,8 @@ if __name__ == '__main__':
             context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
             context.load_cert_chain(certfile=config['CERT_FILE'], keyfile=config['KEY_FILE'])
             httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
+        
+        logger.info(f"客户端缓存清理: {'启用' if config.get('CLEAR_CLIENT_CACHE_ENABLED', True) else '禁用'}")
         
         logger.info('系统启动完成！服务运行在 {} 端口 {} ({}://{}:{}...)',
                     config["BIND_IP"], config["PORT"], config["SCHEME"], config["DOMAIN"], config["PORT"])

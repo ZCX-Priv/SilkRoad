@@ -3,17 +3,20 @@
     {
       "name": "target.js",
       "position": "before_body_end",
-      "exclude_domains": ["example.com", "google.com"]
+      "exclude_domains": ["example.com", "google.com"],
+      "enabled": true
     },
     {
       "name": "dock.js",
       "position": "after_head_start",
-      "exclude_domains": []
+      "exclude_domains": [],
+      "enabled": true
     },
     {
       "name": "progress.js",
       "position": "after_head_start",
-      "exclude_domains": []
+      "exclude_domains": [],
+      "enabled": true
     }
   ],
   "positions": {

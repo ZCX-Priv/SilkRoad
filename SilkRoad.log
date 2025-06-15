@@ -1752,3 +1752,5 @@
 2025-06-13 16:12:46.885 | ERROR    | __main__:process_error:1414 - Proxy error: 请求错误: [WinError 10054] 远程主机强迫关闭了一个现有的连接。
 2025-06-13 17:37:52.391 | WARNING  | __main__:__init__:1109 - 访问被黑名单阻止: https://example.com/
 2025-06-13 17:37:52.394 | WARNING  | __main__:process_forbidden:1253 - 已阻止访问黑名单网站: https://example.com/
+2025-06-15 11:06:23.401 | WARNING  | __main__:__init__:1109 - 访问被黑名单阻止: https://example.com/
+2025-06-15 11:06:23.412 | WARNING  | __main__:process_forbidden:1253 - 已阻止访问黑名单网站: https://example.com/
