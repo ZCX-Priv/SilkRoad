@@ -17,6 +17,12 @@
       "position": "after_head_start",
       "exclude_domains": [],
       "enabled": true
+    },
+    {
+      "name": "url-fixer.js",
+      "position": "before_body_end",
+      "exclude_domains": [],
+      "enabled": false
     }
   ],
   "positions": {
