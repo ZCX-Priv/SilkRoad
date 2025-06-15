@@ -796,61 +796,47 @@ class Template(object):
         with open(config['CHAT_FILE'], encoding=encoding) as f:
             self.chat_html = f.read()
 
-        # 加载404页面模板
-        try:
-            with open(config['NOT_FOUND_FILE'], encoding=encoding) as f:
-                self.not_found_html = f.read()
-        except Exception as e:
-            logger.error(f"加载404页面模板失败: {e}")
-            self.not_found_html = """
+        
+        # 加载error页面模板
+        self.error_html = """
             <!DOCTYPE html>
             <html>
             <head>
-                <title>404 - 页面未找到</title>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>错误页面 | 丝绸之路</title>
                 <style>
                     body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-                    h1 { font-size: 36px; color: #333; }
-                    p { font-size: 18px; color: #666; }
-                    a { color: #0066cc; text-decoration: none; }
-                    a:hover { text-decoration: underline; }
+                    h1 { color: #e74c3c; }
+                    .url { background: #f8f9fa; padding: 10px; border-radius: 5px; word-break: break-all; }
+                    .back-button { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #3498db; color: white; text-decoration: none; border-radius: 5px; }
                 </style>
             </head>
             <body>
-                <h1>404 - 页面未找到</h1>
-                <p>抱歉，您请求的页面不存在。</p>
-                <p><a href="/">返回首页</a></p>
+                <div class="container">
+                    <h1>{{ error_code }} - {{ error_title }}</h1>
+                    <p>{{ error_message }}</p>
+                    
+                    {% if requested_url %}
+                    <p>您尝试访问的路径是:</p>
+                    <div class="url">{{ requested_url }}</div>
+                    {% endif %}
+                    
+                    <p>{{ suggestion }}</p>
+                    <a href="/" class="back-button">返回首页</a>
+                </div>
             </body>
             </html>
-            """
-            logger.warning(f"404页面文件 {config['NOT_FOUND_FILE']} 不存在，使用默认模板")
-            
-        # 加载403页面模板
+        """
+        
         try:
-            with open(config['FORBIDDEN_FILE'], encoding=encoding) as f:
-                self.forbidden_html = f.read()
+            with open(config.get('ERROR_FILE', 'templates/error.html'), encoding=encoding) as f:
+                self.error_html = f.read()
+            logger.info("已加载错误页面模板")
         except Exception as e:
-            logger.error(f"加载403页面模板失败: {e}")
-            self.forbidden_html = """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>403 - 禁止访问</title>
-                <style>
-                    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-                    h1 { font-size: 36px; color: #333; }
-                    p { font-size: 18px; color: #666; }
-                    a { color: #0066cc; text-decoration: none; }
-                    a:hover { text-decoration: underline; }
-                </style>
-            </head>
-            <body>
-                <h1>403 - 禁止访问</h1>
-                <p>抱歉，您没有权限访问此页面。</p>
-                <p><a href="/">返回首页</a></p>
-            </body>
-            </html>
-            """
-            logger.warning(f"403页面文件 {config.get('FORBIDDEN_FILE', '未配置')} 不存在，使用默认模板")
+            logger.error(f"加载错误页面模板失败: {e}")
+            # 使用内置的默认模板
+            logger.warning(f"错误页面文件 {config.get('ERROR_FILE', '未配置')} 不存在，使用默认模板")
         
         # 编译正则表达式用于解析模板标签
         self.resource_pattern = re.compile(r'\{\{path:"([^"]+)",\s*filename:"([^"]+)"\}\}')
@@ -1035,27 +1021,20 @@ class Template(object):
         if context is None:
             context = {}
         return self._process_template(self.chat_html, context)
-    
-    def get_not_found_html(self, context=None):
-        """获取处理后的404页面HTML"""
+
+    def get_error_html(self, context=None):
+        """获取处理后的错误页面HTML"""
         if context is None:
             context = {
-                'error_message': "资源未找到",
+                'error_code': "500",
+                'error_title': "服务器错误",
+                'error_message': "服务器处理请求时发生错误",
+                'suggestion': "请稍后再试或联系管理员",
                 'timestamp': str(int(time.time())),
                 'server_name': config.get('SERVER_NAME', 'SilkRoad'),
                 'requested_url': ''
             }
-        return self._process_template(self.not_found_html, context)
-        
-    def get_forbidden_html(self, context=None):
-        """获取处理后的403页面HTML"""
-        if context is None:
-            context = {
-                'timestamp': str(int(time.time())),
-                'server_name': config.get('SERVER_NAME', 'SilkRoad'),
-                'requested_url': ''
-            }
-        return self._process_template(self.forbidden_html, context)
+        return self._process_template(self.error_html, context)
 
     def render_template(self, template_name, context=None):
         """渲染指定的模板文件"""
@@ -1119,11 +1098,7 @@ class Template(object):
 template = Template()
 
 # ------------------ 浏览器信息伪装 ------------------
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
-]
+# USER_AGENTS数组已移动到config.json
 
 # ------------------ 代理处理 ------------------
 class Proxy(object):
@@ -1240,7 +1215,9 @@ class Proxy(object):
                         if k.lower() not in self.invalid_headers:
                            headers[k] = v
                     if config.get("RANDOM_UA_ENABLED", True):
-                        headers['User-Agent'] = random.choice(USER_AGENTS)
+                        headers['User-Agent'] = random.choice(config.get("USER_AGENTS", [
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+                        ]))
                     
                     # 使用连接池中的客户端发送请求
                     r = client.request(method=self.handler.command, url=self.url, headers=headers, content=data)
@@ -1295,12 +1272,15 @@ class Proxy(object):
             requested_url = requested_url[1:]
             
         context = {
-            'requested_url': requested_url,
+            'error_code': "403",
+            'error_title': "访问被禁止",
             'error_message': "此网站已被管理员列入黑名单",
+            'suggestion': "请检查您的权限，或者返回首页:",
+            'requested_url': requested_url,
             'timestamp': str(int(time.time())),
             'server_name': config.get('SERVER_NAME', 'SilkRoad')
         }
-        body = template.get_forbidden_html(context)
+        body = template.get_error_html(context)
         self.handler.send_response(HTTPStatus.FORBIDDEN)
         encoded = body.encode(config.get("TEMPLATE_ENCODING", "utf-8"))
         self.handler.send_header('Content-Length', len(encoded))
@@ -1681,6 +1661,39 @@ class SilkRoadHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         with open(config['FAVICON_FILE'], 'rb') as f:
             self.favicon_data = f.read()
         super().__init__(request, client_address, server)
+        
+    def send_error(self, code, message=None, explain=None):
+        """发送错误响应"""
+        try:
+            shortmsg, longmsg = self.responses[code]
+        except KeyError:
+            shortmsg, longmsg = '???', '???'
+        if message is None:
+            message = shortmsg
+        if explain is None:
+            explain = longmsg
+            
+        # 使用统一的错误页面模板
+        context = {
+            'error_code': str(code),
+            'error_title': message,
+            'error_message': explain,
+            'suggestion': "如果您认为这是一个错误，请联系网站管理员。",
+            'requested_url': self.path,
+            'timestamp': str(int(time.time())),
+            'server_name': self.server_name
+        }
+        
+        body = template.get_error_html(context)
+        self.send_response(code, message)
+        self.send_header('Content-Type', 'text/html; charset={}'.format(config.get("TEMPLATE_ENCODING", "utf-8")))
+        self.send_header('Connection', 'close')
+        
+        # 发送响应内容
+        encoded = body.encode(config.get("TEMPLATE_ENCODING", "utf-8"))
+        self.send_header('Content-Length', len(encoded))
+        self.end_headers()
+        self.wfile.write(encoded)
 
     def handle_one_request(self):
         """处理单个请求，支持持久连接"""
@@ -1970,11 +1983,15 @@ class SilkRoadHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             requested_url = requested_url[1:]
             
         context = {
+            'error_code': "404",
+            'error_title': "页面未找到",
+            'error_message': "抱歉，您寻找的资源已不在此处。",
+            'suggestion': "请检查您的链接是否正确，或者返回首页:",
             'requested_url': requested_url,
             'timestamp': str(int(time.time())),
             'server_name': self.server_name
         }
-        body = template.get_not_found_html(context)
+        body = template.get_error_html(context)
         self.send_response(HTTPStatus.NOT_FOUND)
         encoded = body.encode(config.get("TEMPLATE_ENCODING", "utf-8"))
         self.send_header('Content-Length', len(encoded))
