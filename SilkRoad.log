@@ -1758,3 +1758,9 @@
 2025-06-15 11:42:17.490 | WARNING  | __main__:process_forbidden:1290 - 已阻止访问黑名单网站: https://example.com/
 2025-06-15 11:43:03.362 | WARNING  | __main__:__init__:1141 - 访问被黑名单阻止: https://example.com/
 2025-06-15 11:43:03.364 | WARNING  | __main__:process_forbidden:1290 - 已阻止访问黑名单网站: https://example.com/
+2025-06-15 11:52:25.539 | WARNING  | __main__:__init__:1141 - 访问被黑名单阻止: https://example.com/
+2025-06-15 11:52:25.541 | WARNING  | __main__:process_forbidden:1290 - 已阻止访问黑名单网站: https://example.com/
+2025-06-15 11:55:29.117 | WARNING  | __main__:__init__:1141 - 访问被黑名单阻止: https://example.com/
+2025-06-15 11:55:29.119 | WARNING  | __main__:process_forbidden:1290 - 已阻止访问黑名单网站: https://example.com/
+2025-06-15 11:58:05.538 | WARNING  | __main__:__init__:1141 - 访问被黑名单阻止: https://example.com/
+2025-06-15 11:58:05.543 | WARNING  | __main__:process_forbidden:1290 - 已阻止访问黑名单网站: https://example.com/
